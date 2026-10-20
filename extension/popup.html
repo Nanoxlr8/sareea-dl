@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sareea DL</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/icon32.png" alt="" class="logo">
+    <h1>Sareea DL</h1>
+    <span id="dot" class="dot" aria-hidden="true"></span>
+  </header>
+
+  <section>
+    <p id="statusText" class="status">Checking...</p>
+    <button id="openApp" type="button" class="btn" hidden>Open Sareea DL</button>
+  </section>
+
+  <section>
+    <label class="switch"><input id="enabled" type="checkbox"><span>Capture browser downloads</span></label>
+    <button id="pause" type="button" class="btn">Pause capture for 5 minutes</button>
+    <p id="pauseNote" class="note" hidden></p>
+  </section>
+
+  <section>
+    <h2>Sign-in cookies</h2>
+    <p class="note">Some downloads need you to be signed in. Allow it one site at a time. The browser asks for your OK first, and the cookies go only with that one download to the app on this PC. They are never saved.</p>
+    <ul id="recent" class="list"></ul>
+    <form id="addSite" class="row">
+      <input id="siteInput" type="text" placeholder="https://example.com" autocomplete="off" spellcheck="false" aria-label="Site address">
+      <button type="submit" class="btn">Allow</button>
+    </form>
+    <p id="siteError" class="note error" hidden></p>
+    <h3>Allowed sites</h3>
+    <p id="noGranted" class="note">None. No site can be read.</p>
+    <ul id="granted" class="list"></ul>
+  </section>
+
+  <details>
+    <summary>Capture rules</summary>
+    <label class="field">
+      <span>File types</span>
+      <textarea id="types" rows="4" spellcheck="false" aria-label="File types to capture"></textarea>
+    </label>
+    <label class="field">
+      <span>Also capture anything of at least (MB, 0 = off)</span>
+      <input id="minSize" type="number" min="0" max="1000000" step="1">
+    </label>
+    <label class="switch"><input id="askMenu" type="checkbox"><span>Ask for cookie permission when using the right-click menu</span></label>
+    <button id="resetRules" type="button" class="btn">Reset to defaults</button>
+  </details>
+
+  <script src="popup.js"></script>
+</body>
+</html>

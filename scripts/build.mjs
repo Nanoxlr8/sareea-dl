@@ -4,9 +4,29 @@ import { build } from 'esbuild';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildHost } from './build-host.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const at = (...p) => path.join(root, ...p);
+
+/** The browser extension: two bundled scripts plus the static files. Output: dist/extension (loadable as-is). */
+export async function buildExtension() {
+  const out = at('dist', 'extension');
+  fs.rmSync(out, { recursive: true, force: true });
+  fs.mkdirSync(out, { recursive: true });
+  const common = {
+    bundle: true,
+    platform: 'browser',
+    format: 'iife',
+    target: 'chrome110',
+    legalComments: 'none',
+    logLevel: 'warning',
+  };
+  await build({ ...common, entryPoints: [at('src/extension/background.ts')], outfile: path.join(out, 'background.js') });
+  await build({ ...common, entryPoints: [at('src/extension/popup.ts')], outfile: path.join(out, 'popup.js') });
+  for (const f of ['manifest.json', 'popup.html', 'popup.css']) fs.copyFileSync(at('extension', f), path.join(out, f));
+  fs.cpSync(at('extension', 'icons'), path.join(out, 'icons'), { recursive: true });
+}
 
 export async function buildAll() {
   fs.rmSync(at('dist'), { recursive: true, force: true });
@@ -36,6 +56,8 @@ export async function buildAll() {
 
   fs.copyFileSync(at('src/renderer/index.html'), at('dist/renderer/index.html'));
   fs.copyFileSync(at('src/renderer/styles.css'), at('dist/renderer/styles.css'));
+  await buildExtension();
+  buildHost(at('dist', 'host', 'sareea-dl-host.exe'));
   console.log('build ok -> dist/');
 }
 

@@ -1,13 +1,16 @@
 # Sareea DL local bridge protocol (version 1)
 
-How the browser extension (phase 3) hands a download to the running desktop app:
+How the browser extension hands a download to the running desktop app:
 
 ```
-browser extension  --native messaging-->  native host (small exe/script)  --named pipe-->  Sareea DL app
+browser extension  --native messaging-->  sareea-dl-host.exe  --named pipe-->  Sareea DL app
 ```
 
-The native host is a thin relay. It copies the extension's message onto the pipe and the app's reply
-back. The app does all validation, so the host does not need to be trusted for safety.
+The native host (`host/SareeaHost.cs`, installed next to the app) is a thin relay. It copies the extension's
+message onto the pipe and the app's reply back. The app does all validation, so the host does not need to be
+trusted for safety. What the extension sends the host, how the host behaves, and how it is registered:
+[extension.md](extension.md). The host sets `v` and `id` itself (`id` looks like `h-<pid>-<ticks>`), starts the
+app when it is not running and a download arrives, and only relays `ping` and `add`.
 
 ## Transport
 
@@ -126,6 +129,7 @@ sending a `ping` with the version it wants and reading the answer.
 
 ## Where it is implemented
 
+* `host/SareeaHost.cs`: the native-messaging host that speaks this protocol on behalf of the browser (tested in `test/host.test.ts`).
 * `src/app/protocol.ts`: parsing, validation, limits, reply format and the line splitter (pure, tested in `test/app-protocol.test.ts`).
 * `src/main/bridge.ts`: the pipe server (tested over a real pipe in `test/app-bridge.test.ts`).
 * `src/main/controller.ts`: `handleBridgeAdd`, the token store and the auto-start rule.

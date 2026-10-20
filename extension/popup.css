@@ -1,0 +1,52 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1b2330;
+  --muted: #667085;
+  --line: #e1e5ec;
+  --accent: #2f6df0;
+  --ok: #1a8d4a;
+  --bad: #c62828;
+  --field: #f3f5f8;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #171b22;
+    --fg: #e8ebf0;
+    --muted: #9aa4b2;
+    --line: #2a313c;
+    --accent: #6c9bff;
+    --ok: #4cc27d;
+    --bad: #ff7b72;
+    --field: #20262f;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; width: 340px; padding: 12px 14px 14px; background: var(--bg); color: var(--fg); font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
+header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+h1 { margin: 0; font-size: 16px; flex: 1; }
+h2 { margin: 0 0 4px; font-size: 13px; }
+h3 { margin: 12px 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+section { padding: 10px 0; border-top: 1px solid var(--line); }
+.logo { width: 24px; height: 24px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--bad); }
+.status { margin: 0 0 6px; font-weight: 600; }
+.note { margin: 4px 0 8px; color: var(--muted); font-size: 12px; }
+.note.error { color: var(--bad); }
+.btn { padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); color: var(--fg); font: inherit; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.switch { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; cursor: pointer; }
+.row { display: flex; gap: 6px; margin: 8px 0 4px; }
+.row input { flex: 1; }
+input[type="text"], input[type="number"], textarea { width: 100%; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); color: var(--fg); font: inherit; }
+textarea { resize: vertical; }
+.field { display: grid; gap: 4px; margin: 8px 0; }
+.field span { color: var(--muted); font-size: 12px; }
+.list { margin: 4px 0; padding: 0; list-style: none; }
+.list li { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.list .site { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: ltr; text-align: left; }
+details { border-top: 1px solid var(--line); padding-top: 8px; }
+summary { cursor: pointer; font-weight: 600; }

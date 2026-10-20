@@ -229,6 +229,10 @@ dialog p { margin: 0 0 12px; user-select: text; }
 .probe.busy { color: var(--muted); }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
 .settings-grid .wide { grid-column: 1 / -1; }
+.integ { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border, rgba(128, 128, 128, 0.3)); }
+.integ h3 { margin: 0 0 4px; font-size: 13px; }
+.integ .note { margin: 2px 0 6px; }
+.row.wrap { flex-wrap: wrap; }
 .check { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: pointer; }
 #settingsDialog { width: min(640px, calc(100vw - 40px)); max-height: calc(100vh - 40px); overflow-y: auto; }
 

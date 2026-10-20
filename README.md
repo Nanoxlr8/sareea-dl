@@ -3,10 +3,12 @@
 A fast, resumable, multi-connection download manager for Windows, written from scratch in TypeScript.
 It has a download engine, a command line tool, and (phase 2) an Electron desktop app in the style of
 IDM: download list, categories, per-connection progress blocks, tray, queue, English and Arabic UI.
-A Chrome/Edge extension is phase 3; the app already listens for it on a local named pipe.
+Phase 3 adds a Chrome and Edge extension (Manifest V3, no content scripts, no site access unless you grant it
+one site at a time) and the native-messaging host that hands browser downloads to the app over its local pipe.
 
 * The engine has zero runtime dependencies (Node built-ins only). The desktop app adds Electron, and
-  its dev tools are `electron`, `esbuild` and `@electron/packager`, nothing else.
+  its dev tools are `electron`, `esbuild` and `@electron/packager`, nothing else. The extension and the
+  native host add no dependency at all.
 * Original code. Nothing here is copied from IDM or any other download manager.
 
 ## Phase status
@@ -14,24 +16,27 @@ A Chrome/Edge extension is phase 3; the app already listens for it on a local na
 | Phase | Scope | Status |
 |---|---|---|
 | 1 | Engine, CLI, tests | Done |
-| 2 | Electron desktop app: list, categories, add dialog, detail panel, settings, tray, notifications, queue, English/Arabic (RTL), clipboard watch, local bridge, packaging | Done (this version) |
-| 3 | Chrome/Edge MV3 extension and the native-messaging host that talks to the bridge ([docs/protocol.md](docs/protocol.md)) | Not started |
+| 2 | Electron desktop app: list, categories, add dialog, detail panel, settings, tray, notifications, queue, English/Arabic (RTL), clipboard watch, local bridge, packaging | Done |
+| 3 | Chrome/Edge MV3 extension, native-messaging host and registration buttons in Settings ([docs/extension.md](docs/extension.md), bridge: [docs/protocol.md](docs/protocol.md)) | Done (this version) |
 
 ## Requirements
 
 Windows 10/11 x64, Node 24 or newer and npm (developed on Node v24.14.1, npm 11). The engine, CLI and
 tests run straight from the TypeScript sources with Node's type stripping. The app is bundled with
-esbuild, so Electron does not need to strip types.
+esbuild, so Electron does not need to strip types. Building (not running) the native-messaging host needs
+`csc.exe`, the C# compiler that is part of the .NET Framework 4 on every Windows 10/11 PC.
 
 ## Run
 
 ```
 npm install                    # once: electron, esbuild, @electron/packager
-npm test                       # 163 tests (engine + app logic + bridge), about 8 seconds
+npm test                       # 248 tests (engine, app logic, bridge, extension logic, native host), about 9 seconds
 npm start                      # build, then open the desktop app
 npm start -- --self-test       # build, then prove an end-to-end download through the app and quit
-npm run build                  # esbuild -> dist/ (main.cjs, preload.cjs, renderer/)
-npm run package                # build + package -> out/Sareea DL-win32-x64/Sareea DL.exe
+npm run build                  # esbuild -> dist/ (main.cjs, preload.cjs, renderer/, extension/, host/)
+npm run package                # build + package -> out/Sareea DL-win32-x64/ (app + sareea-dl-host.exe),
+                               #   out/extension and out/sareea-dl-extension.zip
+npm run e2e:extension          # real Chrome (E2E_BROWSER=edge for Edge) + packaged app, throw-away profile
 npm run dl -- <url> [options]  # the phase-1 command line tool
 npm run icon                   # redraw assets/icon.png and icon.ico (already committed)
 ```
@@ -41,8 +46,15 @@ If `node_modules/electron/dist` is missing, run `node node_modules/electron/inst
 scripts from a normal path: they call `node scripts/*.mjs` directly because a `&` in the folder name
 breaks `.bin` shims under cmd.exe.
 
-Packaged app: `out/Sareea DL-win32-x64/Sareea DL.exe` (asar on, app icon, hardened fuses, see Security).
-`out/` and `dist/` are not committed.
+Packaged app: `out/Sareea DL-win32-x64/Sareea DL.exe` (asar on, app icon, hardened fuses, see Security), with
+`sareea-dl-host.exe` next to it and the extension in `resources/extension`. `out/` and `dist/` are not committed.
+
+### Browser extension (phase 3)
+
+Settings has **Install browser integration** and **Remove browser integration** (off by default, nothing registers
+itself). Install, then load `out/extension` (or the folder the Settings button opens) in Chrome or Edge with
+Developer mode, Load unpacked. Capture rules, the permission table and why each permission is needed, how cookies
+are handled, how the host works, test results and limits: [docs/extension.md](docs/extension.md).
 
 ### `--self-test`
 
@@ -90,7 +102,8 @@ The app listens on `\\.\pipe\sareea-dl-<username>`: newline-delimited JSON, requ
 `{v:1, id, type:"add"|"ping", url, fileName?, referrer?, headers?{cookie?, userAgent?}, pageUrl?}`,
 reply `{v:1, id, ok, error?}`. An "add" opens the Add dialog prefilled for the user to confirm, unless
 "Start browser downloads without asking" is on. Cookies stay in memory for that one download.
-Full description, limits and examples: [docs/protocol.md](docs/protocol.md).
+The browser reaches it through the native-messaging host `sareea-dl-host.exe`
+([docs/extension.md](docs/extension.md)). Full description, limits and examples: [docs/protocol.md](docs/protocol.md).
 
 ## Security model
 
@@ -146,6 +159,21 @@ validated surface between the page and the system, and no secrets on disk.
 * Strict validation, size limits on every field, 64 KiB per line, 8 connections, 50 requests per
   connection, 15 s idle timeout. With "start without asking" off (the default) a request can only open a
   prefilled dialog; the user decides.
+
+**Browser extension and native host** (details and the permission table: [docs/extension.md](docs/extension.md))
+
+* No content scripts, no static host permissions, no `tabs`/`activeTab`/`webRequest`/`scripting`. Permissions:
+  `downloads`, `nativeMessaging`, `contextMenus`, `storage`, `cookies`, plus optional http(s) host access that
+  is requested for **one origin at a time**, only inside a click, and shown with a Revoke button in the popup.
+* `cookies.getAll` is called only for the exact download URL and only when that origin was granted. The cookie
+  goes to the host for that one download, then lives in the app's memory for 10 minutes; it is never stored,
+  logged, or put in an error message (verified end to end by searching the extension's and the app's data).
+* Strict extension CSP (`script-src 'self'; object-src 'none'`, plus `connect-src 'none'`), no remote code, no
+  `eval`, no network request of its own. Stable extension ID from a public key in the manifest; the private key
+  is not in the repository (`secrets/`, gitignored).
+* The host manifest's `allowed_origins` lists only that ID, and the host checks its origin argument itself. The
+  host logs nothing, writes nothing to disk, and a captured download is cancelled in the browser only after the
+  app has accepted it. Nothing registers itself: the registry keys (HKCU only) are written by the Settings button.
 
 **Packaged executable (fuses)**
 
@@ -229,7 +257,10 @@ src/
     strings.ts    every UI string in English and Arabic
     fmt.ts        size, speed, time and date formatting (Arabic units, Western digits)
     redact.ts     secret stripping for logs
+    browser-integration.ts  host name, extension ID, host manifest, registry keys (shared with the host build)
+    nativemsg.ts  native messaging framing (4-byte length + JSON) as the browser sees it
   main/         Electron main process
+    browser-integration.ts  install/remove the host registration (manifest file + HKCU values via reg.exe)
     main.ts       window, tray, IPC wiring, session hardening, notifications, clipboard watch
     controller.ts the app's brain: queue, settings, bridge tokens, actions (no Electron imports, tested)
     bridge.ts     named-pipe server and pipe ACL clean-up
@@ -237,10 +268,16 @@ src/
     logger.ts     redacting daily log files
     selftest.ts   the --self-test run
   renderer/     the sandboxed page: index.html, styles.css, main.ts (UI), detail.ts (panel), icons.ts
-scripts/        build.mjs (esbuild), start.mjs, package.mjs (packager + fuses), fuses.mjs, make-icon.mjs
+  extension/    browser extension logic (bundled by esbuild, unit tested): capture.ts (decision rules, settings),
+                cookies.ts (per-site gating), flow.ts (hand-over and right-click behaviour, browser APIs injected),
+                native.ts (messages to the host), background.ts (service worker), popup.ts
+extension/      manifest.json (public key, permissions, CSP), popup.html/css, icons
+host/           SareeaHost.cs: the native-messaging host (C# 5, compiled by csc.exe from the .NET Framework)
+scripts/        build.mjs (esbuild), build-host.mjs (csc), start.mjs, package.mjs (packager + fuses + extension zip),
+                fuses.mjs, zip.mjs, make-icon.mjs, make-extension-key.mjs, e2e-extension.mjs (real-browser test)
 assets/         icon.png, icon.ico (drawn by scripts/make-icon.mjs)
-docs/           protocol.md
-test/           node:test suites + a local range-capable test server (helpers.ts)
+docs/           protocol.md (the pipe), extension.md (extension, host, permissions, tests)
+test/           node:test suites + a local range-capable test server (helpers.ts) + fixtures/FakeApp.cs
 ```
 
 How a download runs:
@@ -285,5 +322,14 @@ control and bidi characters, `<>:"/\|?*`, trailing dots, reserved device names, 
   `Programs`, `Video` or `General` (unknown types). A folder chosen with Browse is used as it is.
 * **Cookies after a restart.** Headers are not stored, so a bridge download that was paused and survives an
   app restart resumes without its cookie (the server may refuse; send the link again from the browser).
+* **Phase 3 decisions.** The native host is a small .NET Framework program (`host/SareeaHost.cs`), not a mode of
+  the Electron exe: Electron writes a stray CR LF to stdout at start-up, which breaks the browser's length-prefixed
+  framing (measured, details in [docs/extension.md](docs/extension.md)). The host is built with the `csc.exe` that
+  ships with Windows, so users need neither Node nor an SDK. A browser download is held until the app accepts it
+  and is cancelled only then, so an unreachable app never loses a download. Extension settings (file types,
+  minimum size, pause) live in the extension; the app has no say in what the browser hands over. The extension is
+  loaded unpacked; there is no store listing. `SAREEA_DL_TEST_DIR` keeps the app's data and pipe apart from a real
+  install, for the end-to-end test only.
 * **Not done:** code signing and an installer, proxy settings, scheduling, site grabber, video capture,
-  auto-extraction, FTP, HTTP/2 specifics, and a UI for changing the detail panel size.
+  auto-extraction, FTP, HTTP/2 specifics, a UI for changing the detail panel size, an Arabic popup, Firefox, and a
+  store listing for the extension.

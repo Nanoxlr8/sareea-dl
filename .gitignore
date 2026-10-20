@@ -6,3 +6,6 @@ dist/
 .tmp/
 out/
 *.tmp
+secrets/
+*.pem
+*.crx

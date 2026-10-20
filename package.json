@@ -2,7 +2,7 @@
   "name": "sareea-dl",
   "productName": "Sareea DL",
   "version": "0.1.0",
-  "description": "Sareea DL - a fast, segmented, resumable download manager (engine, CLI and Electron desktop app).",
+  "description": "Sareea DL - a fast, segmented, resumable download manager (engine, CLI, Electron desktop app, browser extension).",
   "private": true,
   "type": "module",
   "main": "dist/main.cjs",
@@ -18,6 +18,9 @@
     "build": "node scripts/build.mjs",
     "start": "node scripts/start.mjs",
     "package": "node scripts/package.mjs",
+    "build:host": "node scripts/build-host.mjs",
+    "e2e:extension": "node scripts/e2e-extension.mjs",
+    "extension:key": "node scripts/make-extension-key.mjs",
     "icon": "node scripts/make-icon.mjs"
   },
   "license": "UNLICENSED",

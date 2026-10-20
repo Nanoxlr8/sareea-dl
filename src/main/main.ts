@@ -7,6 +7,7 @@ import {
   app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, session, shell, Tray,
 } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -15,10 +16,12 @@ import iconPng from '../../assets/icon.png';
 import { AppController } from './controller.ts';
 import type { Platform } from './controller.ts';
 import { BridgeServer, pipeNameFor } from './bridge.ts';
+import { installIntegration, integrationState, removeIntegration, systemRegRunner } from './browser-integration.ts';
 import { Logger } from './logger.ts';
 import { runSelfTest } from './selftest.ts';
 import { CH } from '../app/api.ts';
-import type { AddPrefill, ItemsBatch, Result, ToastMessage, ViewItem } from '../app/api.ts';
+import type { AddPrefill, IntegrationView, ItemsBatch, Result, ToastMessage, ViewItem } from '../app/api.ts';
+import { EXTENSION_ID, HOST_EXE_NAME, pipeSuffixForTestDir, testDirFromEnv } from '../app/browser-integration.ts';
 import { looksLikeDownloadLink } from '../app/categories.ts';
 import { formatRate } from '../app/fmt.ts';
 import {
@@ -43,7 +46,10 @@ if (app.isPackaged && argv.some((a) => /^--(remote-debugging|inspect|debug)/i.te
 
 app.setName('Sareea DL');
 app.setAppUserModelId('com.sareea.dl');
-if (!argv.includes('--self-test')) app.setPath('userData', path.join(app.getPath('appData'), 'Sareea DL'));
+// SAREEA_DL_TEST_DIR is a test hook (see docs/extension.md): the end-to-end test keeps the app's data and
+// its pipe name apart from a real installation.
+const TEST_DIR = testDirFromEnv(process.env);
+if (!argv.includes('--self-test')) app.setPath('userData', TEST_DIR ?? path.join(app.getPath('appData'), 'Sareea DL'));
 
 if (SELF_TEST) {
   // A throw-away profile: the self-test never touches the real settings, queue or downloads.
@@ -300,6 +306,37 @@ function registerIpc(): void {
     return { ok: true, url: text && !/\s/.test(text) && isHttpUrl(text) ? text : null };
   });
   handle(CH.watch, validateWatchId, (id) => controller.watch(id));
+  handle(CH.getIntegration, noArgs, async () => ({ ok: true, integration: await integrationView() }));
+  handle(CH.installIntegration, noArgs, async (): Promise<Result<{ integration: IntegrationView }>> => {
+    if (!app.isPackaged) return { ok: false, error: 'only the packaged app can install the browser integration' };
+    const hostExe = path.join(path.dirname(process.execPath), HOST_EXE_NAME);
+    if (!fs.existsSync(hostExe)) return { ok: false, error: 'the browser host program is missing next to the app' };
+    const r = await installIntegration({ exePath: hostExe, dataDir: app.getPath('userData'), run: systemRegRunner() });
+    if (!r.ok) return r;
+    log.info('browser integration installed');
+    return { ok: true, integration: await integrationView() };
+  });
+  handle(CH.removeIntegration, noArgs, async (): Promise<Result<{ integration: IntegrationView }>> => {
+    const r = await removeIntegration({ dataDir: app.getPath('userData'), run: systemRegRunner() });
+    if (!r.ok) return r;
+    log.info('browser integration removed');
+    return { ok: true, integration: await integrationView() };
+  });
+  handle(CH.openExtensionFolder, noArgs, async (): Promise<Result> => {
+    const dir = extensionDir();
+    if (!dir) return { ok: false, error: 'the extension folder is only bundled with the packaged app' };
+    const err = await shell.openPath(dir);
+    return err ? { ok: false, error: 'could not open the folder' } : { ok: true };
+  });
+}
+
+function extensionDir(): string | null {
+  return app.isPackaged ? path.join(process.resourcesPath, 'extension') : null;
+}
+
+async function integrationView(): Promise<IntegrationView> {
+  const st = await integrationState({ dataDir: app.getPath('userData'), run: systemRegRunner() });
+  return { supported: app.isPackaged, chrome: st.chrome, edge: st.edge, extensionId: EXTENSION_ID, extensionDir: extensionDir() };
 }
 
 // ------------------------------------------------------- settings side effects
@@ -488,7 +525,7 @@ void app.whenReady().then(async () => {
   if (!SELF_TEST) createTray();
 
   bridge = new BridgeServer({
-    pipe: pipeNameFor(undefined, SELF_TEST ? `-selftest-${process.pid}` : ''),
+    pipe: pipeNameFor(undefined, SELF_TEST ? `-selftest-${process.pid}` : pipeSuffixForTestDir(TEST_DIR)),
     log,
     onAdd: (req) => controller.handleBridgeAdd(req),
   });

@@ -3,7 +3,7 @@
  * window.sareea (see src/main/preload.ts). Text from the engine or the network is only ever put on
  * the page with textContent, never as markup.
  */
-import type { AddPrefill, ItemsBatch, SareeaApi, ToastMessage, ViewItem } from '../app/api.ts';
+import type { AddPrefill, IntegrationView, ItemsBatch, SareeaApi, ToastMessage, ViewItem } from '../app/api.ts';
 import { categoryOf, subfolderFor } from '../app/categories.ts';
 import type { CategoryFilter } from '../app/categories.ts';
 import { formatDateTime, formatRate, formatSize, formatDuration, percent } from '../app/fmt.ts';
@@ -773,7 +773,55 @@ function fillSettings(): void {
 function openSettings(): void {
   fillSettings();
   if (!setDlg.open) setDlg.showModal();
+  void refreshIntegration();
 }
+
+// Browser integration (native-messaging host registration): off until the user presses Install.
+let integration: IntegrationView | null = null;
+
+function integStateText(st: IntegrationView['chrome']): string {
+  return st === 'installed' ? t('settings.browserInstalled') : st === 'stale' ? t('settings.browserStale') : t('settings.browserMissing');
+}
+
+function renderIntegration(): void {
+  const status = $('integStatus');
+  const install = $<HTMLButtonElement>('integInstall');
+  const remove = $<HTMLButtonElement>('integRemove');
+  const folder = $<HTMLButtonElement>('integFolder');
+  if (!integration) {
+    status.textContent = '';
+    return;
+  }
+  if (!integration.supported) {
+    status.textContent = t('settings.browserUnsupported');
+    install.disabled = true;
+  } else {
+    status.textContent = t('settings.browserStatus', { chrome: integStateText(integration.chrome), edge: integStateText(integration.edge) });
+    install.disabled = false;
+  }
+  remove.disabled = integration.chrome === 'missing' && integration.edge === 'missing';
+  folder.disabled = integration.extensionDir === null;
+}
+
+async function refreshIntegration(): Promise<void> {
+  const r = await api.getIntegration();
+  if (r.ok) integration = r.integration;
+  renderIntegration();
+}
+
+async function changeIntegration(action: 'install' | 'remove'): Promise<void> {
+  const r = await (action === 'install' ? api.installIntegration() : api.removeIntegration());
+  if (!r.ok) {
+    toast('error', t('toast.error', { msg: r.error }));
+    return;
+  }
+  integration = r.integration;
+  renderIntegration();
+  toast('success', t(action === 'install' ? 'toast.integrationInstalled' : 'toast.integrationRemoved'));
+}
+$('integInstall').addEventListener('click', () => void changeIntegration('install'));
+$('integRemove').addEventListener('click', () => void changeIntegration('remove'));
+$('integFolder').addEventListener('click', () => void api.openExtensionFolder());
 
 async function applySetting(patch: Partial<Settings>): Promise<void> {
   const r = await api.setSettings(patch);
@@ -872,6 +920,7 @@ function applySettings(s: Settings, first = false): void {
     relabelSidebar();
     detail.relabel();
     for (const r of rows.values()) r.cache = {};
+    renderIntegration();
   }
   if (!setDlg.open) fillSettings();
   else $<HTMLInputElement>('setFolder').value = s.defaultDir;

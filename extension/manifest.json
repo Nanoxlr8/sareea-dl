@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Sareea DL Integration",
+  "short_name": "Sareea DL",
+  "version": "0.1.0",
+  "description": "Sends your browser downloads to the Sareea DL desktop app. No content scripts, no access to any site unless you allow it.",
+  "minimum_chrome_version": "110",
+  "permissions": [
+    "downloads",
+    "nativeMessaging",
+    "contextMenus",
+    "storage",
+    "cookies"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Sareea DL",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "default-src 'none'; script-src 'self'; object-src 'none'; style-src 'self'; img-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAshucoYzNxBYOiAt3JOU/MCFoGfMJ7qufIdNvYnBeWYef9/zECKsfUD+4WC5Rv6wXJ1mjO35fqtAKleON9fH96jb3YdcAcZRTbbW3djC41IzyrpMXwikY0WpFbnURtCo0S2G2CtnrXhwjS9Z5XU8nvEeXdws+aX1b/ebvRHutA36gME/MhBSzQSv2NskRZvHqcQjEwLB4rLqW91o42OzffI91pKtZ8JO6RYN47xYQA5H9V4c9u417YZtwf3GVKs2g42FoI5Jw7JllGDy+IawKkiDJnrVEmIsjyYUF7THuErSV6fSEQfHWPkntStpoBUMwoLcTMyO7uWLXNfxy4UgCzQIDAQAB"
+}

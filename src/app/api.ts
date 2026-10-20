@@ -100,6 +100,19 @@ export interface ToastMessage {
   text: string;
 }
 
+export type IntegrationBrowserState = 'installed' | 'missing' | 'stale';
+
+/** Whether the browser integration (native-messaging host registration) is set up. */
+export interface IntegrationView {
+  /** Only the packaged app can register itself as the browser host. */
+  supported: boolean;
+  chrome: IntegrationBrowserState;
+  edge: IntegrationBrowserState;
+  extensionId: string;
+  /** Folder with the built extension (to "Load unpacked"), or null when running from source. */
+  extensionDir: string | null;
+}
+
 /** What the preload script exposes as window.sareea. */
 export interface SareeaApi {
   getState(): Promise<InitialState>;
@@ -120,6 +133,10 @@ export interface SareeaApi {
   pickFolder(): Promise<Result<{ dir: string | null }>>;
   readClipboardUrl(): Promise<Result<{ url: string | null }>>;
   watch(id: string | null): Promise<Result>;
+  getIntegration(): Promise<Result<{ integration: IntegrationView }>>;
+  installIntegration(): Promise<Result<{ integration: IntegrationView }>>;
+  removeIntegration(): Promise<Result<{ integration: IntegrationView }>>;
+  openExtensionFolder(): Promise<Result>;
   onItems(cb: (batch: ItemsBatch) => void): () => void;
   onSettings(cb: (s: Settings) => void): () => void;
   onDetail(cb: (d: DetailView) => void): () => void;
@@ -146,6 +163,10 @@ export const CH = {
   pickFolder: 'sareea:pickFolder',
   readClipboardUrl: 'sareea:readClipboardUrl',
   watch: 'sareea:watch',
+  getIntegration: 'sareea:getIntegration',
+  installIntegration: 'sareea:installIntegration',
+  removeIntegration: 'sareea:removeIntegration',
+  openExtensionFolder: 'sareea:openExtensionFolder',
   evItems: 'sareea:ev:items',
   evSettings: 'sareea:ev:settings',
   evDetail: 'sareea:ev:detail',

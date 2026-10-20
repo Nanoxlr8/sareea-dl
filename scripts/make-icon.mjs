@@ -1,5 +1,5 @@
 // Draws the Sareea DL icon from scratch (no image libraries) and writes
-// assets/icon.png (256 px) and assets/icon.ico (16..256 px, PNG-compressed entries).
+// assets/icon.png (256 px), assets/icon.ico (16..256 px, PNG-compressed entries) and extension/icons/icon{16,32,48,128}.png.
 // Run: node scripts/make-icon.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -150,4 +150,7 @@ sizes.forEach((s, i) => {
 fs.mkdirSync(path.join(root, 'assets'), { recursive: true });
 fs.writeFileSync(path.join(root, 'assets', 'icon.png'), pngs[pngs.length - 1]);
 fs.writeFileSync(path.join(root, 'assets', 'icon.ico'), Buffer.concat([header, ...dir, ...pngs]));
-console.log('wrote assets/icon.png and assets/icon.ico', sizes.join(','));
+// the browser extension uses the same artwork
+fs.mkdirSync(path.join(root, 'extension', 'icons'), { recursive: true });
+for (const s of [16, 32, 48, 128]) fs.writeFileSync(path.join(root, 'extension', 'icons', 'icon' + s + '.png'), pngs[sizes.indexOf(s)]);
+console.log('wrote assets/icon.png, assets/icon.ico and extension/icons/', sizes.join(','));

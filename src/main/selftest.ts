@@ -230,6 +230,13 @@ export async function runSelfTest(env: SelfTestEnv): Promise<number> {
     await waitFor('the settings dialog', () => ev<boolean>(`document.getElementById('settingsDialog').open`), 3000);
     const folderShown = await ev<string>(`document.getElementById('setFolder').value`);
     check('settings dialog shows the default folder', folderShown === env.downloadDir, folderShown);
+    // browser integration section: reads the registry, writes nothing (the buttons are not pressed here)
+    const integ = await waitFor('the browser integration status', async () => {
+      const t = await ev<string>(`document.getElementById('integStatus').innerText`);
+      return t.includes('Chrome:') ? t : null;
+    }, 8000);
+    const integButtons = await ev<string>(`['integInstall', 'integRemove', 'integFolder'].map((id) => document.getElementById(id).innerText.trim() + (document.getElementById(id).disabled ? ' (disabled)' : '')).join(' | ')`);
+    check('settings dialog shows the browser integration status and its three buttons', integ.includes('Edge:') && integButtons.startsWith('Install browser integration |'), `${integ} / ${integButtons}`);
     await sleep(200);
     await shot('06-settings');
     await ev(`document.getElementById('settingsClose').click()`);

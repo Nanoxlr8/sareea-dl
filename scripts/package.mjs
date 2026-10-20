@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildAll } from './build.mjs';
 import { applyFuses } from './fuses.mjs';
+import { zipDirectory } from './zip.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const at = (...p) => path.join(root, ...p);
@@ -35,6 +36,8 @@ const [appDir] = await packager({
   arch: 'x64',
   electronVersion,
   asar: true,
+  // the built browser extension travels with the app (resources/extension) so Settings can open its folder
+  extraResource: [at('dist', 'extension')],
   overwrite: true,
   prune: false,
   icon: at('assets', 'icon.ico'),
@@ -44,7 +47,18 @@ const [appDir] = await packager({
 });
 
 const exe = path.join(appDir, 'Sareea DL.exe');
+// The native-messaging host sits next to the app exe: the browsers start it, it relays to the running app.
+fs.copyFileSync(at('dist', 'host', 'sareea-dl-host.exe'), path.join(appDir, 'sareea-dl-host.exe'));
 const wire = applyFuses(exe);
 fs.rmSync(path.join(root, '.tmp'), { recursive: true, force: true });
+
+// The extension on its own: out/extension (Load unpacked) and out/sareea-dl-extension.zip
+const extOut = path.join(out, 'extension');
+fs.rmSync(extOut, { recursive: true, force: true });
+fs.cpSync(at('dist', 'extension'), extOut, { recursive: true });
+const zipFile = path.join(out, 'sareea-dl-extension.zip');
+fs.rmSync(zipFile, { force: true });
+const entries = zipDirectory(extOut, zipFile);
+console.log(`extension -> ${extOut} and ${zipFile} (${entries} files)`);
 console.log('fuses:', wire);
 console.log('packaged ->', exe);
