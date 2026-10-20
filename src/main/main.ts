@@ -22,6 +22,7 @@ import { BridgeServer, pipeNameFor } from './bridge.ts';
 import { installIntegration, integrationState, removeIntegration, systemRegRunner } from './browser-integration.ts';
 import { Logger } from './logger.ts';
 import { runSelfTest } from './selftest.ts';
+import { runShowcase } from './showcase.ts';
 import { APP_INDEX_URL, APP_SCHEME, resolveAppRequest } from '../app/app-scheme.ts';
 import type { AddPrefill, DetailView, IntegrationView, ItemsBatch, Result, ToastMessage, ViewItem } from '../app/api.ts';
 import { EXTENSION_ID, HOST_EXE_NAME } from '../app/browser-integration.ts';
@@ -44,6 +45,14 @@ const START_HIDDEN = argv.includes('--hidden');
 // Test flavour only (src/app/test-hooks.ts). In the release build this is the constant null and the helper is gone.
 const TEST_MODE: TestMode | null = __SAREEA_TEST_HOOKS__ ? readTestMode(argv, process.env, process.pid) : null;
 const SELF_TEST = __SAREEA_TEST_HOOKS__ && TEST_MODE !== null && TEST_MODE.selfTest;
+const SHOWCASE = __SAREEA_TEST_HOOKS__ && TEST_MODE !== null && TEST_MODE.showcaseDir !== null;
+// the README pictures are taken at 1.5x, whatever the screen's own scale is
+if (__SAREEA_TEST_HOOKS__ && SHOWCASE) {
+  app.commandLine.appendSwitch('force-device-scale-factor', '1.5');
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+  app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+  app.commandLine.appendSwitch('disable-renderer-backgrounding');
+}
 
 // A packaged app must not be started with debugging switches (the exe fuses already switch off the Node ones).
 if (app.isPackaged && argv.some((a) => /^--(remote-debugging|inspect|debug)/i.test(a))) process.exit(1);
@@ -58,7 +67,7 @@ app.setAppUserModelId('com.sareea.dl');
 // The userData folder: the real one, or (test flavour only) a test folder / the self-test's throw-away profile, so a
 // test never touches the real settings, queue or downloads.
 app.setPath('userData', TEST_MODE?.userData ?? path.join(app.getPath('appData'), 'Sareea DL'));
-if (!SELF_TEST && !app.requestSingleInstanceLock()) {
+if (!SELF_TEST && !SHOWCASE && !app.requestSingleInstanceLock()) {
   app.quit();
   process.exit(0);
 }
@@ -613,7 +622,7 @@ function onBatch(batch: ItemsBatch): void {
 }
 
 function onCompleted(v: ViewItem): void {
-  if (!controller.settings.notifyOnComplete || !Notification.isSupported() || SELF_TEST) return;
+  if (!controller.settings.notifyOnComplete || !Notification.isSupported() || SELF_TEST || SHOWCASE) return;
   const n = new Notification({ title: tt('notify.done'), body: v.name });
   liveNotifications.add(n);
   n.on('click', () => void controller.openFolder(v.id));
@@ -661,12 +670,13 @@ void app.whenReady().then(async () => {
   log.info(`Sareea DL ${app.getVersion()} starting (${app.isPackaged ? 'packaged' : 'development'}, Electron ${process.versions.electron})`);
 
   const selfDir = SELF_TEST ? path.join(dataDir, 'downloads') : null;
+  const showDir = SHOWCASE ? path.join(dataDir, 'Downloads') : null;
   controller = new AppController({
     dataDir,
     userProfile: process.env.USERPROFILE ?? os.homedir(),
     platform,
     log,
-    settingsOverride: selfDir ? { defaultDir: selfDir, categorySubfolders: true, language: 'en', theme: 'light' } : undefined,
+    settingsOverride: selfDir ? { defaultDir: selfDir, categorySubfolders: true, language: 'en', theme: 'light' } : showDir ? { defaultDir: showDir, categorySubfolders: true, language: 'en', theme: 'light' } : undefined,
   });
   controller.on('batch', onBatch);
   controller.on('detail', (d: DetailView) => emitDetail(d));
@@ -690,9 +700,10 @@ void app.whenReady().then(async () => {
   win.once('ready-to-show', () => {
     if (SELF_TEST) {
       if (showSelfTest) win?.showInactive();
-    } else if (!START_HIDDEN) win?.show();
+    } else if (SHOWCASE) win?.show();
+    else if (!START_HIDDEN) win?.show();
   });
-  if (!SELF_TEST) createTray();
+  if (!SELF_TEST && !SHOWCASE) createTray();
 
   bridge = new BridgeServer({
     pipe: pipeNameFor(undefined, TEST_MODE?.pipeSuffix ?? ''),
@@ -714,6 +725,15 @@ void app.whenReady().then(async () => {
       consoleErrors,
       packaged: app.isPackaged,
     });
+    quitting = true;
+    await controller.shutdown().catch(() => undefined);
+    await bridge.stop();
+    await log.flush();
+    app.exit(code);
+  }
+
+  if (__SAREEA_TEST_HOOKS__ && SHOWCASE && TEST_MODE !== null && TEST_MODE.showcaseDir !== null) {
+    const code = await runShowcase({ controller, win, log, outDir: TEST_MODE.showcaseDir });
     quitting = true;
     await controller.shutdown().catch(() => undefined);
     await bridge.stop();

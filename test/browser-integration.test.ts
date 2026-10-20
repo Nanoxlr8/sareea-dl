@@ -86,7 +86,7 @@ describe('test hook', () => {
   });
   it('readTestMode reads the switches and the test folder, and picks a private pipe suffix', () => {
     const none = readTestMode(['--hidden'], {}, 4242);
-    assert.deepEqual(none, { selfTest: false, selfTestOut: null, screenshotDir: null, testDir: null, userData: null, pipeSuffix: '' });
+    assert.deepEqual(none, { selfTest: false, selfTestOut: null, screenshotDir: null, showcaseDir: null, testDir: null, userData: null, pipeSuffix: '' });
     const st = readTestMode(['--self-test', '--self-test-out=C:\\o\\r.json', '--screenshot-dir=C:\\shots'], { SAREEA_DL_TEST_DIR: 'C:\\t' }, 4242);
     assert.equal(st.selfTest, true);
     assert.equal(st.selfTestOut, 'C:\\o\\r.json');

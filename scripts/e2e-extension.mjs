@@ -442,7 +442,8 @@ try {
   if (process.env.E2E_SHOTS) {
     // optional: E2E_SHOTS=<folder> saves a picture of the popup
     await extEval(popup.cdp, 'document.querySelector("details").open = true');
-    const shot = await popup.cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 380, height: 760, scale: 1 } });
+    await new Promise((r) => setTimeout(r, 500));
+    const shot = await popup.cdp.send('Page.captureScreenshot', { format: 'png', clip: { x: 0, y: 0, width: 380, height: 760, scale: 2 } });
     fs.mkdirSync(process.env.E2E_SHOTS, { recursive: true });
     fs.writeFileSync(path.join(process.env.E2E_SHOTS, 'popup.png'), Buffer.from(shot.data, 'base64'));
   }
