@@ -6,8 +6,9 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import {
   ALLOWED_ORIGIN, buildHostManifest, EXTENSION_ID, extensionIdFromPublicKey, HOST_NAME, hostManifestPath,
-  pipeSuffixForTestDir, REGISTRY_KEYS, serializeHostManifest, testDirFromEnv,
+  REGISTRY_KEYS, serializeHostManifest,
 } from '../src/app/browser-integration.ts';
+import { pipeSuffixForTestDir, readTestMode, testDirFromEnv } from '../src/app/test-hooks.ts';
 import { installIntegration, integrationState, parseRegDefault, removeIntegration } from '../src/main/browser-integration.ts';
 import type { RegRunner } from '../src/main/browser-integration.ts';
 import { NATIVE_HOST_NAME } from '../src/extension/native.ts';
@@ -82,6 +83,19 @@ describe('test hook', () => {
     assert.equal(pipeSuffixForTestDir(null), '');
     assert.match(pipeSuffixForTestDir('C:\\temp\\x'), /^-test-[0-9a-f]{10}$/);
     assert.notEqual(pipeSuffixForTestDir('C:\\temp\\x'), pipeSuffixForTestDir('C:\\temp\\y'));
+  });
+  it('readTestMode reads the switches and the test folder, and picks a private pipe suffix', () => {
+    const none = readTestMode(['--hidden'], {}, 4242);
+    assert.deepEqual(none, { selfTest: false, selfTestOut: null, screenshotDir: null, testDir: null, userData: null, pipeSuffix: '' });
+    const st = readTestMode(['--self-test', '--self-test-out=C:\\o\\r.json', '--screenshot-dir=C:\\shots'], { SAREEA_DL_TEST_DIR: 'C:\\t' }, 4242);
+    assert.equal(st.selfTest, true);
+    assert.equal(st.selfTestOut, 'C:\\o\\r.json');
+    assert.equal(st.screenshotDir, 'C:\\shots');
+    assert.match(st.userData ?? '', /sareea-selftest-4242$/);
+    assert.equal(st.pipeSuffix, '-selftest-4242');
+    const dir = readTestMode([], { SAREEA_DL_TEST_DIR: 'C:\\t' }, 1);
+    assert.equal(dir.userData, 'C:\\t');
+    assert.match(dir.pipeSuffix, /^-test-[0-9a-f]{10}$/);
   });
 });
 

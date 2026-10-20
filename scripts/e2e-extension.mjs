@@ -1,7 +1,10 @@
 // End-to-end test of the browser integration with a REAL Chrome (or Edge) and the REAL packaged app.
 //
-//   npm run package            (once: builds out/ with the app, the host and the extension)
-//   node scripts/e2e-extension.mjs
+//   npm run package:test       (once: builds out-test/ with the TEST flavour of the app and the host)
+//   npm run e2e:extension
+//
+// It uses the TEST flavour (out-test/): the release app and host contain no test hooks, so they cannot be pointed at a
+// test data folder or a test pipe. Never run it against a release package.
 //
 // It never touches your normal browser profile or a running copy of the app:
 //   * Chrome starts with a throw-away --user-data-dir in the temp folder and the built extension loaded;
@@ -22,10 +25,10 @@ import { installIntegration, removeIntegration, systemRegRunner } from '../src/m
 import { makeBuffer, sha256 } from '../test/helpers.ts';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const exeDir = path.join(root, 'out', 'Sareea DL-win32-x64');
+const exeDir = path.join(root, 'out-test', 'Sareea DL-win32-x64');
 const appExe = path.join(exeDir, 'Sareea DL.exe');
 const hostExe = path.join(exeDir, HOST_EXE_NAME);
-const extDir = path.join(root, 'out', 'extension');
+const extDir = path.join(root, 'out-test', 'extension');
 
 // E2E_BROWSER=edge runs the same test with Microsoft Edge instead of Chrome (default).
 const CANDIDATES = {
@@ -49,7 +52,7 @@ const metrics = {};
 
 for (const [what, p] of [['app exe', appExe], ['host exe', hostExe], ['built extension', path.join(extDir, 'manifest.json')]]) {
   if (!fs.existsSync(p)) {
-    console.error(`missing ${what}: ${p}\nrun "npm run package" first`);
+    console.error(`missing ${what}: ${p}\nrun "npm run package:test" first`);
     process.exit(2);
   }
 }

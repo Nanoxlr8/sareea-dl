@@ -21,7 +21,7 @@ Chrome / Edge                                        this PC
 
 ## Install (for the person using it)
 
-1. Run `npm run package`. The app is in `out/Sareea DL-win32-x64/` (it contains `Sareea DL.exe`,
+1. Run `npm run package` (the release flavour, with no test hooks). The app is in `out/Sareea DL-win32-x64/` (it contains `Sareea DL.exe`,
    `sareea-dl-host.exe` and `resources/extension`).
 2. Start Sareea DL, open Settings, press **Install browser integration**. Then press **Open extension folder**.
 3. In Chrome or Edge open the extensions page (`chrome://extensions` or `edge://extensions`), turn on Developer
@@ -118,6 +118,7 @@ nothing from https to http), so the full address of the page you were on does no
 | Replies | one frame `{v:1, ok, error?}`. `error` is a short fixed text or the app's own refusal text; it never contains a URL, cookie or header value |
 | Limits | 10 s to receive the message, 20 s for the app's answer (the app may probe the link first), 45 s hard stop |
 | Logging | none: nothing is logged or written to disk |
+| Environment | the release host reads no environment variable. Only the test flavour (`csc /define:TEST_HOOKS`, used by the automated tests) reads `SAREEA_DL_TEST_DIR` and `SAREEA_DL_HOST_*_MS`; `npm run check:release` fails the package if those strings are in the release exe |
 
 The origin argument is a consistency check, not authentication: any local process can pass it. What protects the
 app is the same as for any bridge client: the pipe is limited to your user, the app validates every field, and
@@ -178,23 +179,26 @@ rebuild.
 
 ## Tests
 
-* **Unit tests** (`npm test`, no browser needed): capture decision (types, size, schemes, pause, incognito, own
+* **Unit tests** (`npm test`, no browser needed; they also cover the build flavours, the literal IPC channels, the app:// scheme and the pipe-ACL command, see the README): capture decision (types, size, schemes, pause, incognito, own
   downloads), cookie permission gating (no grant, no `getAll`), the hand-over flow and the right-click flow with
   every browser API faked, message framing (limits, split chunks, bad UTF-8), the host program itself (compiled
   by the test and driven like a browser: origin check, relay, app start, timeouts, bad frames, no echo of
   secrets), host manifest generation, registration with a fake `reg.exe`, extension ID derived from the key, and
   audit rules on the manifest and on the bundled scripts (no content scripts, exact permission list, CSP, no
   `eval`, no `fetch`, no `tabs`/`scripting`/`webRequest`, no logging).
-* **End to end** (`npm run e2e:extension`, needs `npm run package` first and Chrome or Edge; set
-  `E2E_BROWSER=edge` for Edge): real browser, real packaged app, real host.
+* **End to end** (`npm run e2e:extension`, needs `npm run package:test` first and Chrome or Edge; set
+  `E2E_BROWSER=edge` for Edge): real browser, real packaged app, real host, all from the **test flavour** in `out-test/`
+  (the release app and host have no test hooks and cannot be redirected to a test folder).
   * Chrome starts with a temporary `--user-data-dir`, headless, and a loopback test site on `127.0.0.1`.
     Chrome 137 and later ignore `--load-extension` in branded builds, so the harness loads the extension with
     CDP `Extensions.loadUnpacked` over `--remote-debugging-pipe` (Edge 155 still honours `--load-extension`).
     The browser's download folder is set in the temporary profile's preferences (not through CDP, because
     CDP download control bypasses the extension hook).
-  * The app runs with `SAREEA_DL_TEST_DIR` (own data folder and own pipe name), so a real installation is never
-    touched. `SAREEA_DL_HOST_STARTUP_MS`, `SAREEA_DL_HOST_REPLY_MS` and `SAREEA_DL_HOST_READ_MS` shorten the
-    host's waits in tests; they are harmless otherwise.
+  * The test-flavour app runs with `SAREEA_DL_TEST_DIR` (own data folder and own pipe name), so a real installation is
+    never touched, and the test-flavour host follows the same variable to that pipe. `SAREEA_DL_HOST_STARTUP_MS`,
+    `SAREEA_DL_HOST_REPLY_MS` and `SAREEA_DL_HOST_READ_MS` shorten the host's waits in tests. None of these exist in the
+    release app or host (that is the point: a process that can set environment variables for the browser must not be able
+    to point the host at a pipe of its own).
   * It registers the host under HKCU for the run only (and refuses to start if the key already exists), then
     removes the keys and verifies they are gone, deletes the temporary profile, and kills only the processes it
     started itself.

@@ -2,7 +2,9 @@
 // .NET Framework 4 on every Windows 10/11 PC (no SDK, no Visual Studio, no Node needed to RUN the result).
 // The allowed extension origin and the app exe name are generated from src/app/browser-integration.ts so the
 // host and the app can never disagree.
-// Run: node scripts/build-host.mjs [out.exe]      (default: dist/host/sareea-dl-host.exe)
+// Two flavours: the RELEASE host (default) contains no test hook at all; the TEST host (--test-hooks, csc
+// /define:TEST_HOOKS) also reads SAREEA_DL_TEST_DIR and SAREEA_DL_HOST_*_MS and is used only by the automated tests.
+// Run: node scripts/build-host.mjs [out.exe] [--test-hooks]      (default: dist/host/sareea-dl-host.exe, release)
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -40,8 +42,11 @@ export function generatedSource(version) {
   ].join('\r\n');
 }
 
-/** Compile the host to `outFile`. Returns the path. Throws with the compiler's output on failure. */
-export function buildHost(outFile = path.join(root, 'dist', 'host', 'sareea-dl-host.exe')) {
+/**
+ * Compile the host to `outFile`. Returns the path. Throws with the compiler's output on failure.
+ * `testHooks: true` builds the test flavour (never ship it).
+ */
+export function buildHost(outFile = path.join(root, 'dist', 'host', 'sareea-dl-host.exe'), { testHooks = false } = {}) {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   const version = `${pkg.version}.0`;
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sareea-host-build-'));
@@ -51,7 +56,7 @@ export function buildHost(outFile = path.join(root, 'dist', 'host', 'sareea-dl-h
     fs.mkdirSync(path.dirname(outFile), { recursive: true });
     fs.rmSync(outFile, { force: true });
     const args = [
-      '/nologo', '/target:winexe', '/optimize+', '/debug-', '/platform:anycpu', '/warnaserror+',
+      '/nologo', ...(testHooks ? ['/define:TEST_HOOKS'] : []), '/target:winexe', '/optimize+', '/debug-', '/platform:anycpu', '/warnaserror+',
       `/out:${outFile}`, `/win32icon:${path.join(root, 'assets', 'icon.ico')}`,
       '/r:System.dll', '/r:System.Web.Extensions.dll',
       path.join(root, 'host', 'SareeaHost.cs'), generated,
@@ -67,6 +72,9 @@ export function buildHost(outFile = path.join(root, 'dist', 'host', 'sareea-dl-h
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const out = buildHost(process.argv[2] ? path.resolve(process.argv[2]) : undefined);
-  console.log('host build ok ->', out, `(${fs.statSync(out).size} bytes)`);
+  const rest = process.argv.slice(2);
+  const testHooks = rest.includes('--test-hooks');
+  const target = rest.find((a) => !a.startsWith('--'));
+  const out = buildHost(target ? path.resolve(target) : undefined, { testHooks });
+  console.log(`host build ok (${testHooks ? 'TEST flavour' : 'release'}) ->`, out, `(${fs.statSync(out).size} bytes)`);
 }

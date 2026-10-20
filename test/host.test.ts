@@ -11,7 +11,8 @@ import fs from 'node:fs';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ALLOWED_ORIGIN, APP_EXE_NAME, HOST_EXE_NAME, MAX_NATIVE_MESSAGE_BYTES, pipeSuffixForTestDir } from '../src/app/browser-integration.ts';
+import { ALLOWED_ORIGIN, APP_EXE_NAME, HOST_EXE_NAME, MAX_NATIVE_MESSAGE_BYTES } from '../src/app/browser-integration.ts';
+import { pipeSuffixForTestDir } from '../src/app/test-hooks.ts';
 import { encodeMessage, FrameDecoder } from '../src/app/nativemsg.ts';
 import { BridgeServer, pipeNameFor } from '../src/main/bridge.ts';
 import { Logger } from '../src/main/logger.ts';
@@ -28,7 +29,7 @@ const logger = new Logger(path.join(work, 'logs'), false);
 
 before(() => {
   fs.mkdirSync(hostDir, { recursive: true });
-  buildHost(hostExe);
+  buildHost(hostExe, { testHooks: true }); // the TEST flavour: reads SAREEA_DL_TEST_DIR and SAREEA_DL_HOST_*_MS
   const r = spawnSync(findCsc(), ['/nologo', '/target:winexe', `/out:${fakeApp}`, path.join(root, 'test', 'fixtures', 'FakeApp.cs')], { encoding: 'utf8', windowsHide: true });
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });

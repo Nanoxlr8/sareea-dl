@@ -1,7 +1,8 @@
 /**
  * `--self-test`: proves the whole chain works inside the real app, then the caller quits.
  * It runs in a throw-away profile (temp userData) and checks, through the real window:
- *   - the page loaded with no console errors (CSP violations show up as console errors) and has no Node access
+ *   - the page was served from app://sareea/ (not file:), the scheme handler serves only the renderer files and
+ *     refuses traversal, and the page loaded with no console errors (CSP violations show up as console errors) and has no Node access
  *   - hostile IPC calls from the page are refused and create nothing
  *   - the named-pipe bridge answers ping, rejects bad lines, and a bridge "add" opens the prefilled Add dialog
  *   - clicking "Start now" downloads https://proof.ovh.net/files/10Mb.dat to the expected size
@@ -17,7 +18,7 @@ import type { AppController } from './controller.ts';
 import type { Logger } from './logger.ts';
 
 export const SELF_TEST_URL = 'https://proof.ovh.net/files/10Mb.dat';
-export const SELF_TEST_SIZE = 10 * 1024 * 1024;
+export const SELF_TEST_SIZE = 10_485_760; // 10 MiB
 
 export interface SelfTestEnv {
   controller: AppController;
@@ -111,12 +112,28 @@ export async function runSelfTest(env: SelfTestEnv): Promise<number> {
   try {
     // 1. the page is up, sandboxed and clean
     await waitFor('the UI to be ready', () => ev<boolean>(`document.body && document.body.dataset.ready === '1'`), 20000);
-    const page = await ev<{ api: string; fn: number; node: string; csp: string; dir: string; title: string }>(`({
+    const page = await ev<{ api: string; fn: number; node: string; csp: string; dir: string; title: string; href: string; origin: string }>(`({
+      href: location.href, origin: location.origin,
       api: typeof window.sareea, fn: Object.keys(window.sareea || {}).length,
       node: typeof require + ',' + typeof process + ',' + typeof module + ',' + typeof Buffer,
       csp: (document.querySelector('meta[http-equiv="Content-Security-Policy"]') || {}).content || '',
       dir: document.documentElement.dir, title: document.title })`);
     check('page exposes window.sareea and nothing from Node', page.api === 'object' && page.fn >= 15 && page.node === 'undefined,undefined,undefined,undefined', JSON.stringify(page.node));
+    check('page is served from app://sareea/index.html with origin app://sareea (not file:)', page.href === 'app://sareea/index.html' && page.origin === 'app://sareea', `${page.href} ${page.origin}`);
+    const served = await Promise.all(
+      ['index.html', 'app.js', 'styles.css', '', '..%2fmain.cjs', '%2e%2e/main.cjs', '../preload.cjs', 'main.cjs', 'sub/../index.html', 'index.html%00.js', '..%5cmain.cjs'].map(async (p) => {
+        const r = await win.webContents.session.fetch(`app://sareea/${p}`).catch(() => null);
+        return `${p || '/'}=${r ? r.status : 'err'}`;
+      }),
+    );
+    const wantOk = ['index.html=200', 'app.js=200', 'styles.css=200', '/=200'];
+    check(
+      'app:// serves the three renderer files and refuses traversal, parent files and odd paths',
+      wantOk.every((x) => served.includes(x)) && served.filter((x) => !wantOk.includes(x) && !x.startsWith('sub/../index.html')).every((x) => /=(404|err)$/.test(x)),
+      served.join(' '),
+    );
+    const wrongHost = await win.webContents.session.fetch('app://evil/index.html').catch(() => null);
+    check('another app:// host is refused', !!wrongHost && wrongHost.status === 404, String(wrongHost?.status));
     check('strict CSP meta present', page.csp.includes("default-src 'self'") && page.csp.includes("connect-src 'none'") && page.csp.includes("object-src 'none'"));
     check('window title and LTR layout in English', page.title === 'Sareea DL' && page.dir === 'ltr');
 
@@ -233,10 +250,11 @@ export async function runSelfTest(env: SelfTestEnv): Promise<number> {
     // browser integration section: reads the registry, writes nothing (the buttons are not pressed here)
     const integ = await waitFor('the browser integration status', async () => {
       const t = await ev<string>(`document.getElementById('integStatus').innerText`);
-      return t.includes('Chrome:') ? t : null;
+      // an unpackaged run (npm start) cannot register a host, and says so instead of listing the browsers
+      return (env.packaged ? t.includes('Chrome:') : /packaged app/.test(t)) ? t : null;
     }, 8000);
     const integButtons = await ev<string>(`['integInstall', 'integRemove', 'integFolder'].map((id) => document.getElementById(id).innerText.trim() + (document.getElementById(id).disabled ? ' (disabled)' : '')).join(' | ')`);
-    check('settings dialog shows the browser integration status and its three buttons', integ.includes('Edge:') && integButtons.startsWith('Install browser integration |'), `${integ} / ${integButtons}`);
+    check('settings dialog shows the browser integration status and its three buttons', (env.packaged ? integ.includes('Edge:') : /packaged app/.test(integ)) && integButtons.startsWith(env.packaged ? 'Install browser integration |' : 'Install browser integration (disabled) |'), `${integ} / ${integButtons}`);
     await sleep(200);
     await shot('06-settings');
     await ev(`document.getElementById('settingsClose').click()`);

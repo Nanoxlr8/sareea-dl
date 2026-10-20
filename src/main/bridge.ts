@@ -21,8 +21,8 @@ export function pipeNameFor(username: string = os.userInfo().username, suffix = 
   return `\\\\.\\pipe\\sareea-dl-${safe}${suffix}`;
 }
 
-// Fixed script, no user data in it: the pipe name travels in an environment variable.
-const TIGHTEN_SCRIPT = [
+// Fixed script, no user data in it: the pipe name travels in an environment variable, never in the command text.
+export const TIGHTEN_SCRIPT = [
   "$ErrorActionPreference = 'Stop'",
   "$rights = [System.IO.Pipes.PipeAccessRights]'ReadData, ReadPermissions, ChangePermissions'",
   "$c = New-Object System.IO.Pipes.NamedPipeClientStream('.', $env:SAREEA_PIPE_NAME, $rights, [System.IO.Pipes.PipeOptions]::None, [System.Security.Principal.TokenImpersonationLevel]::Identification, [System.IO.HandleInheritability]::None)",
@@ -33,17 +33,52 @@ const TIGHTEN_SCRIPT = [
   '$c.Dispose()',
 ].join('; ');
 
+/** Name of the environment variable that carries the pipe name to the script. */
+export const PIPE_NAME_ENV = 'SAREEA_PIPE_NAME';
+
+/** The pipe name as PowerShell receives it: letters, digits, dot, underscore and hyphen only (what pipeNameFor makes). */
+const SAFE_PIPE_NAME = /^[A-Za-z0-9._-]{1,200}$/;
+const PIPE_PREFIX = /^\\\\\.\\pipe\\/;
+/** %SystemRoot% is used only if it is an absolute local path without shell-special characters. */
+const SAFE_SYSTEM_ROOT = /^[A-Za-z]:\\[A-Za-z0-9 ._()\\-]*$/;
+
+export interface PipeAclCommand {
+  /** Absolute path of powershell.exe under %SystemRoot%\System32 (never found through PATH). */
+  file: string;
+  /** Constant: the same for every user name and pipe name. */
+  args: string[];
+  /** The caller's environment plus the pipe name. */
+  env: NodeJS.ProcessEnv;
+}
+
+/**
+ * Builds the PowerShell call that removes Everyone and Anonymous from the pipe's ACL. Nothing derived from the
+ * user name is ever put into the command line or the script: the arguments are constant and the pipe name
+ * (already sanitised by pipeNameFor, and checked again here) goes through an environment variable that the
+ * fixed script reads as data. Throws for anything that is not a \\.\pipe\ name made of safe characters only.
+ */
+export function buildPipeAclCommand(pipe: string, env: NodeJS.ProcessEnv = process.env): PipeAclCommand {
+  const name = pipe.replace(PIPE_PREFIX, '');
+  if (name === pipe || !SAFE_PIPE_NAME.test(name)) throw new Error('refusing to tighten a pipe with an unsafe name');
+  const root = env.SystemRoot && SAFE_SYSTEM_ROOT.test(env.SystemRoot) && !env.SystemRoot.includes('..') ? env.SystemRoot : 'C:\\Windows';
+  return {
+    file: path.win32.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+    args: ['-NoProfile', '-NonInteractive', '-Command', TIGHTEN_SCRIPT],
+    env: { ...env, [PIPE_NAME_ENV]: name },
+  };
+}
+
 /** Remove the Everyone and Anonymous entries from the pipe's ACL. Resolves true when done. */
 export function restrictPipeToCurrentUser(pipe: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
-    const name = pipe.replace(/^\\\\\.\\pipe\\/, '');
-    const powershell = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
-    execFile(
-      powershell,
-      ['-NoProfile', '-NonInteractive', '-Command', TIGHTEN_SCRIPT],
-      { windowsHide: true, timeout: 20_000, env: { ...process.env, SAREEA_PIPE_NAME: name } },
-      (err) => resolve(!err),
-    );
+    let cmd: PipeAclCommand;
+    try {
+      cmd = buildPipeAclCommand(pipe);
+    } catch {
+      resolve(false);
+      return;
+    }
+    execFile(cmd.file, cmd.args, { windowsHide: true, timeout: 20_000, env: cmd.env }, (err) => resolve(!err));
   });
 }
 

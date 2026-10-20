@@ -30,13 +30,16 @@ esbuild, so Electron does not need to strip types. Building (not running) the na
 
 ```
 npm install                    # once: electron, esbuild, @electron/packager
-npm test                       # 248 tests (engine, app logic, bridge, extension logic, native host), about 9 seconds
-npm start                      # build, then open the desktop app
-npm start -- --self-test       # build, then prove an end-to-end download through the app and quit
-npm run build                  # esbuild -> dist/ (main.cjs, preload.cjs, renderer/, extension/, host/)
-npm run package                # build + package -> out/Sareea DL-win32-x64/ (app + sareea-dl-host.exe),
-                               #   out/extension and out/sareea-dl-extension.zip
-npm run e2e:extension          # real Chrome (E2E_BROWSER=edge for Edge) + packaged app, throw-away profile
+npm test                       # 321 tests (engine, app logic, IPC audit, build flavours, bridge, extension logic, native host), about 9 seconds
+npm start                      # build the TEST flavour (dist-test/), then open the desktop app
+npm start -- --self-test       # same, then prove an end-to-end download through the app and quit
+npm run build                  # esbuild, RELEASE flavour -> dist/ (main.cjs, preload.cjs, renderer/, extension/, host/)
+npm run build:test             # esbuild, TEST flavour    -> dist-test/
+npm run package                # RELEASE: build + package -> out/Sareea DL-win32-x64/ (app + sareea-dl-host.exe),
+                               #   out/extension and out/sareea-dl-extension.zip; fails if any test hook is found in it
+npm run package:test           # TEST flavour -> out-test/ (self-test and end-to-end hooks; never ship it)
+npm run check:release          # search the release package for test hooks (also part of `npm run package` and `npm test`)
+npm run e2e:extension          # real Chrome (E2E_BROWSER=edge for Edge) + packaged TEST app (out-test/), throw-away profile
 npm run dl -- <url> [options]  # the phase-1 command line tool
 npm run icon                   # redraw assets/icon.png and icon.ico (already committed)
 ```
@@ -47,7 +50,9 @@ scripts from a normal path: they call `node scripts/*.mjs` directly because a `&
 breaks `.bin` shims under cmd.exe.
 
 Packaged app: `out/Sareea DL-win32-x64/Sareea DL.exe` (asar on, app icon, hardened fuses, see Security), with
-`sareea-dl-host.exe` next to it and the extension in `resources/extension`. `out/` and `dist/` are not committed.
+`sareea-dl-host.exe` next to it and the extension in `resources/extension`. That is the **release** flavour: it
+contains no test hook. `out-test/` is the **test** flavour used by the self-test and the end-to-end test (see
+"Build flavours" under Security model). `out/`, `out-test/`, `dist/` and `dist-test/` are not committed.
 
 ### Browser extension (phase 3)
 
@@ -58,14 +63,16 @@ are handled, how the host works, test results and limits: [docs/extension.md](do
 
 ### `--self-test`
 
-`Sareea DL.exe --self-test` (or `npm start -- --self-test`) runs in a throw-away profile in the temp
-folder and uses the real window. It checks that the page has no Node access and no CSP errors, that
-hostile IPC calls are refused, that the bridge pipe answers and rejects bad input, then a bridge
-"add" opens the prefilled Add dialog, "Start now" downloads
+Test flavour only (`npm start -- --self-test`, or `out-test/Sareea DL-win32-x64/Sareea DL.exe --self-test` after
+`npm run package:test`). The release exe does not know the switch. It runs in a throw-away profile in the temp
+folder and uses the real window. It checks that the page is served from `app://sareea/index.html` (not `file:`),
+that the scheme handler serves only the renderer files and refuses traversal, that the page has no Node access
+and no CSP errors, that hostile IPC calls are refused, that the bridge pipe answers and rejects bad input, then a
+bridge "add" opens the prefilled Add dialog, "Start now" downloads
 `https://proof.ovh.net/files/10Mb.dat` (10 485 760 bytes), the list shows it as completed, and the UI
-flips to Arabic RTL. It prints `SELF-TEST PASS` or `FAIL` plus a JSON report and exits 0 or 1.
+flips to Arabic RTL. It prints `SELF-TEST PASS` or `FAIL` plus a JSON report (27 checks) and exits 0 or 1.
 Options: `--self-test-out=<file>` (also write the JSON there), `--screenshot-dir=<dir>` (save PNGs and show the window).
-It needs internet access.
+It needs internet access, and leaves its temp profile (`%TEMP%\sareea-selftest-<pid>`) for you to delete.
 
 ## The desktop app
 
@@ -107,28 +114,68 @@ The browser reaches it through the native-messaging host `sareea-dl-host.exe`
 
 ## Security model
 
-The goal: a page that is only ever our own local file, no network from the UI, a very small and
-validated surface between the page and the system, and no secrets on disk.
+The goal: a page that is only ever our own bundled files, no network from the UI, a very small and
+validated surface between the page and the system, no secrets on disk, and no test hook in what ships.
+
+**Build flavours (no test hooks in the release)**
+
+* Two flavours of everything, chosen by the build, not by a flag at run time:
+  * **release** (`npm run build`, `npm run package`): `dist/`, `out/`. esbuild's `define`
+    `__SAREEA_TEST_HOOKS__=false` plus syntax minification remove every branch, import and helper that only the
+    test hooks use, so the bundle has no self-test code and none of the strings below. The native host is compiled
+    without `TEST_HOOKS`, so `host/SareeaHost.cs` keeps its `#if TEST_HOOKS` code out of the exe and reads no
+    environment variable at all.
+  * **test** (`npm start`, `npm run build:test`, `npm run package:test`): `dist-test/`, `out-test/`. `__SAREEA_TEST_HOOKS__=true` and
+    `csc /define:TEST_HOOKS`. Used only by `--self-test` and `npm run e2e:extension`. Never ship it.
+* The hooks, all of which exist only in the test flavour: `SAREEA_DL_TEST_DIR` (app data folder and pipe name for
+  the app, pipe name for the host), `SAREEA_DL_HOST_READ_MS` / `_STARTUP_MS` / `_REPLY_MS` (host wait limits),
+  `--self-test`, `--self-test-out=`, `--screenshot-dir=`. Their code lives in `src/app/test-hooks.ts` and
+  `src/main/selftest.ts`, reached from `main.ts` only through `__SAREEA_TEST_HOOKS__`.
+* Why it matters: a process that can set environment variables for the browser could otherwise redirect the host to
+  a `-test-` pipe it owns and receive download URLs and cookies.
+* The gate: `scripts/check-release.mjs` searches every file in the release `app.asar` (main bundle included) and
+  the release `sareea-dl-host.exe` for `SAREEA_DL_TEST_DIR`, `SAREEA_DL_HOST_`, `--self-test` and `--screenshot-dir`,
+  as UTF-8 and UTF-16 (C# strings), and fails (exit code 1) if any is present. It runs at the end of
+  `npm run package`, and `npm test` (`test/release-flavour.test.ts`) builds both flavours of the app and the host, checks the
+  release bytes, checks that the test flavour does contain the hooks (so the scan is not blind), checks that the
+  release host ignores `SAREEA_DL_TEST_DIR` (it never connects to a `-test-` pipe), and runs the gate on synthetic
+  good and bad packages and on `out/` if it has been built.
 
 **Window and renderer**
 
 * `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, `webSecurity: true`, no webviews,
   no remote module, DevTools disabled in the packaged app, no application menu, spellcheck off.
-* The only page is `dist/renderer/index.html` (inside `app.asar` when packaged), loaded with `loadFile`.
+* The only page is `app://sareea/index.html`, served from a custom scheme and not from `file://`. `app` is registered
+  (before the app is ready) as `standard` and `secure` only: no fetch API, no CORS, no service workers, no CSP bypass.
+  `protocol.handle('app', ...)` in `main.ts` answers GET requests only, and maps them through
+  `resolveAppRequest` (`src/app/app-scheme.ts`) to the files of one folder, `dist/renderer` (inside `app.asar` when
+  packaged). It refuses a wrong scheme or host, a port or credentials, `.` / `..` segments (also percent-encoded or
+  double-encoded), `\`, `:`, NUL and control characters, empty segments, trailing dots or spaces, extensions other
+  than html, js, css, png and svg, and any resolved path that is not inside the renderer folder.
+  Unit-tested with the traversal spellings; the self-test repeats the important ones against the running app.
   Strict CSP in the page: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;
-  connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`. No inline script or style
-  attributes; text from the engine or network is only ever set with `textContent`.
+  connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'` (`'self'` is now exactly `app://sareea`).
+  No inline script or style attributes; text from the engine or network is only ever set with `textContent`.
 * `will-navigate`, `will-redirect` and `will-attach-webview` are blocked; `setWindowOpenHandler` denies
   every window and opens only validated `http(s)` links through `shell.openExternal`.
-* Permission requests are denied. Any request from the UI to `http(s)`, `ws(s)` or `ftp` is cancelled
-  and logged: the engine downloads from the Node side, the UI never touches the network.
+* Permission requests are denied. Any request from the UI to `http(s)`, `ws(s)`, `ftp` or `file` is cancelled
+  and logged: the engine downloads from the Node side, the UI never touches the network or the local disk.
 * The preload script exposes one frozen object, `window.sareea`, with one method per action
   (`src/app/api.ts`). No generic IPC access.
 
 **IPC**
 
-* Every `ipcMain.handle` checks the sender: it must be the main window's top frame and its URL must be
-  our own `index.html` (`isTrustedSender`). Anything else is refused and logged.
+* Channel names are string literals at every call site, never a map or a variable: `ipcRenderer.invoke('sareea:add', ...)`
+  in `src/main/preload.ts`, `ipcMain.handle('sareea:add', ...)` in `src/main/main.ts`, `webContents.send('sareea:ev:items', ...)`
+  for events. 21 request channels, one preload method and one handler each; 5 event channels. A static tool (or a
+  reader) can pair every call with its handler. `test/ipc-channels.test.ts` runs the bundled preload against a
+  recording stand-in for `electron` and checks that each exposed method maps to exactly one literal channel, that the
+  channels are exactly the handlers' channels, that every handler's first statement is the sender check and its
+  second step its own validator, that no other `ipcMain` entry point exists, and that the release bundle keeps all 21
+  handlers literal.
+* Every `ipcMain.handle` calls `rejectUntrusted` first: the sender must be the main window's top frame and its
+  URL must be exactly our own `app://sareea/index.html` (`isTrustedSender`: scheme, host and path; a `file:` URL, another
+  host, a port or credentials never match). Anything else is refused and logged.
 * Every argument is validated for type, exact shape and range before it is used (`src/app/ipc.ts`,
   `src/app/settings.ts`): only `http(s)` links, connections 1 to 16, ids must be UUIDs, unknown fields
   are rejected.
@@ -153,9 +200,16 @@ validated surface between the page and the system, and no secrets on disk.
 **Bridge pipe**
 
 * Name includes the user name. Node creates the pipe with the default Windows ACL, which also lets
-  Everyone and Anonymous read; right after listening the app removes those two entries (a short fixed
-  PowerShell script run from `%SystemRoot%\System32`), leaving the user, Administrators and SYSTEM.
-  Even before that, nobody else could write to it.
+  Everyone and Anonymous read; right after listening the app removes those two entries, leaving the user,
+  Administrators and SYSTEM. Even before that, nobody else could write to it.
+* That clean-up runs `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` by absolute path (never through
+  `PATH`; `%SystemRoot%` is used only if it is a plain absolute local path, else `C:\Windows`) with the constant
+  arguments `-NoProfile -NonInteractive -Command <fixed script>`. Nothing derived from the user name is in the command line or
+  the script: the pipe name (user name reduced to `A-Za-z0-9._-`, at most 64 characters, and checked again against
+  that set before use) reaches the script as the environment variable `SAREEA_PIPE_NAME`, which the script reads as data.
+  `buildPipeAclCommand` in `src/main/bridge.ts` builds the call; `test/bridge-acl.test.ts` checks it with hostile user names
+  such as `a';calc;'`, backticks, `$(...)`, `&`, quotes, line breaks and over-long names, and also tightens a real pipe named
+  after such a user.
 * Strict validation, size limits on every field, 64 KiB per line, 8 connections, 50 requests per
   connection, 15 s idle timeout. With "start without asking" off (the default) a request can only open a
   prefilled dialog; the user decides.
@@ -179,10 +233,13 @@ validated surface between the page and the system, and no secrets on disk.
 
 `npm run package` flips Electron fuses in the exe: `RunAsNode` off, `NODE_OPTIONS` ignored, Node CLI
 inspect arguments off, cookie encryption on, embedded ASAR integrity validation on, only load the app
-from `app.asar`, WebAssembly trap handlers on. `GrantFileProtocolExtraPrivileges` has to stay on,
-because with it off Electron cannot load a page from inside `app.asar` (tested: `ERR_FILE_NOT_FOUND`);
-the CSP, the navigation block and the sender check above are what contain a `file://` page. A packaged
-app also refuses `--inspect`, `--debug` and `--remote-debugging-*` switches. The app is not code-signed.
+from `app.asar`, WebAssembly trap handlers on, and **`GrantFileProtocolExtraPrivileges` off** (it used to have to
+stay on, because a `file://` page cannot be loaded from inside `app.asar` without it; the page now comes from the
+`app://` scheme, so nothing needs file privileges). A packaged app also refuses `--inspect`, `--debug` and
+`--remote-debugging-*` switches. The app is not code-signed. The fuse states are printed by `npm run package`; both
+flavours get the same fuses, and the packaged app loading and working with the fuse off is shown by the self-test on
+`out-test/` (27 checks) and by a plain launch of the release exe, whose log says `page loaded from app://sareea/index.html`
+and `UI ready` (the page reached the main process through the sender check) with no warning or error.
 
 ## Using the engine (phase 1)
 
@@ -249,8 +306,10 @@ src/
   format.ts     size parsing and formatting for the CLI
   cli.ts        command line front end
   app/          pure app logic shared by main, preload and renderer (no Electron), all unit tested
-    api.ts        view types, the window.sareea API type, IPC channel names
-    ipc.ts        validators for every renderer request, sender check, folder rules
+    api.ts        view types and the window.sareea API type (channel names are literals in preload.ts / main.ts, not here)
+    app-scheme.ts the app://sareea scheme: constants and resolveAppRequest (URL -> file inside the renderer folder, or refusal)
+    ipc.ts        validators for every renderer request, sender check (isTrustedSender), folder rules
+    test-hooks.ts test-flavour only: SAREEA_DL_TEST_DIR, --self-test switches, pipe suffixes (absent from the release bundle)
     settings.ts   settings model, defaults, strict patch and lenient load validation
     categories.ts extension -> category, sidebar filters, risky file types, link detection
     protocol.ts   bridge protocol parsing, limits, reply format, line splitter
@@ -263,18 +322,19 @@ src/
     browser-integration.ts  install/remove the host registration (manifest file + HKCU values via reg.exe)
     main.ts       window, tray, IPC wiring, session hardening, notifications, clipboard watch
     controller.ts the app's brain: queue, settings, bridge tokens, actions (no Electron imports, tested)
-    bridge.ts     named-pipe server and pipe ACL clean-up
-    preload.ts    contextBridge API
+    bridge.ts     named-pipe server and pipe ACL clean-up (buildPipeAclCommand: absolute powershell.exe, fixed arguments)
+    preload.ts    contextBridge API, literal IPC channels
     logger.ts     redacting daily log files
-    selftest.ts   the --self-test run
+    selftest.ts   the --self-test run (test flavour only)
   renderer/     the sandboxed page: index.html, styles.css, main.ts (UI), detail.ts (panel), icons.ts
   extension/    browser extension logic (bundled by esbuild, unit tested): capture.ts (decision rules, settings),
                 cookies.ts (per-site gating), flow.ts (hand-over and right-click behaviour, browser APIs injected),
                 native.ts (messages to the host), background.ts (service worker), popup.ts
 extension/      manifest.json (public key, permissions, CSP), popup.html/css, icons
 host/           SareeaHost.cs: the native-messaging host (C# 5, compiled by csc.exe from the .NET Framework)
-scripts/        build.mjs (esbuild), build-host.mjs (csc), start.mjs, package.mjs (packager + fuses + extension zip),
-                fuses.mjs, zip.mjs, make-icon.mjs, make-extension-key.mjs, e2e-extension.mjs (real-browser test)
+scripts/        build.mjs (esbuild, release and test flavours), build-host.mjs (csc, with or without TEST_HOOKS), start.mjs,
+                package.mjs (packager + fuses + extension zip + release gate), check-release.mjs (hook-string gate),
+                fuses.mjs, zip.mjs, make-icon.mjs, make-extension-key.mjs, e2e-extension.mjs (real-browser test, test flavour)
 assets/         icon.png, icon.ico (drawn by scripts/make-icon.mjs)
 docs/           protocol.md (the pipe), extension.md (extension, host, permissions, tests)
 test/           node:test suites + a local range-capable test server (helpers.ts) + fixtures/FakeApp.cs
@@ -328,8 +388,8 @@ control and bidi characters, `<>:"/\|?*`, trailing dots, reserved device names, 
   ships with Windows, so users need neither Node nor an SDK. A browser download is held until the app accepts it
   and is cancelled only then, so an unreachable app never loses a download. Extension settings (file types,
   minimum size, pause) live in the extension; the app has no say in what the browser hands over. The extension is
-  loaded unpacked; there is no store listing. `SAREEA_DL_TEST_DIR` keeps the app's data and pipe apart from a real
-  install, for the end-to-end test only.
+  loaded unpacked; there is no store listing. The end-to-end test keeps the app's data and pipe apart from a real
+  install with `SAREEA_DL_TEST_DIR`, which exists only in the test flavour (see Security model, Build flavours).
 * **Not done:** code signing and an installer, proxy settings, scheduling, site grabber, video capture,
   auto-extraction, FTP, HTTP/2 specifics, a UI for changing the detail panel size, an Arabic popup, Firefox, and a
   store listing for the extension.

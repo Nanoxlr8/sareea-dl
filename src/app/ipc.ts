@@ -114,16 +114,18 @@ export function validateRemoveRequest(v: unknown): Checked<RemoveRequest> {
 }
 
 /**
- * A request is trusted only if it comes from our own window's page: the sending frame's URL must be
- * exactly the local index.html we loaded (the hash and query are ignored, the path is not).
+ * A request is trusted only if it comes from our own window's page: the sending frame's URL must be exactly
+ * the page we loaded from our custom scheme, app://sareea/index.html (scheme, host and path must match; the
+ * hash and query are ignored; a port or credentials in the URL, or any other scheme such as file:, never match).
  */
-export function isTrustedSender(frameUrl: string | undefined | null, expectedFileUrl: string): boolean {
+export function isTrustedSender(frameUrl: string | undefined | null, expectedUrl: string): boolean {
   if (!frameUrl) return false;
   try {
     const a = new URL(frameUrl);
-    const b = new URL(expectedFileUrl);
-    if (a.protocol !== 'file:' || b.protocol !== 'file:') return false;
-    return a.pathname.toLowerCase() === b.pathname.toLowerCase() && a.host === b.host;
+    const b = new URL(expectedUrl);
+    if (a.protocol !== 'app:' || b.protocol !== 'app:') return false;
+    if (a.username || a.password || a.port) return false;
+    return a.host.toLowerCase() === b.host.toLowerCase() && a.pathname === b.pathname;
   } catch {
     return false;
   }

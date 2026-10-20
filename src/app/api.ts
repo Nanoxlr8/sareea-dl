@@ -1,4 +1,9 @@
-/** Types and channel names shared by main, preload and renderer. Types only plus constants. */
+/**
+ * Types shared by main, preload and renderer. Types only.
+ * IPC channel names are deliberately NOT constants here: each one is written as a string literal in
+ * src/main/preload.ts (ipcRenderer.invoke / on) and in src/main/main.ts (ipcMain.handle / webContents.send),
+ * so that a reader or a static tool can pair every call with its handler. test/ipc-channels.test.ts checks the pairing.
+ */
 import type { Category } from './categories.ts';
 import type { Settings } from './settings.ts';
 
@@ -143,33 +148,3 @@ export interface SareeaApi {
   onShowAdd(cb: (p: AddPrefill) => void): () => void;
   onToast(cb: (t: ToastMessage) => void): () => void;
 }
-
-/** IPC channel names. Renderer to main (invoke) and main to renderer (send). */
-export const CH = {
-  getState: 'sareea:getState',
-  ready: 'sareea:ready',
-  probe: 'sareea:probe',
-  add: 'sareea:add',
-  pause: 'sareea:pause',
-  resume: 'sareea:resume',
-  remove: 'sareea:remove',
-  redownload: 'sareea:redownload',
-  openFile: 'sareea:openFile',
-  openFolder: 'sareea:openFolder',
-  copyLink: 'sareea:copyLink',
-  startQueue: 'sareea:startQueue',
-  stopQueue: 'sareea:stopQueue',
-  setSettings: 'sareea:setSettings',
-  pickFolder: 'sareea:pickFolder',
-  readClipboardUrl: 'sareea:readClipboardUrl',
-  watch: 'sareea:watch',
-  getIntegration: 'sareea:getIntegration',
-  installIntegration: 'sareea:installIntegration',
-  removeIntegration: 'sareea:removeIntegration',
-  openExtensionFolder: 'sareea:openExtensionFolder',
-  evItems: 'sareea:ev:items',
-  evSettings: 'sareea:ev:settings',
-  evDetail: 'sareea:ev:detail',
-  evShowAdd: 'sareea:ev:showAdd',
-  evToast: 'sareea:ev:toast',
-} as const;

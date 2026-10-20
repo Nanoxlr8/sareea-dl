@@ -1,49 +1,78 @@
 /**
  * Preload script (sandboxed). Exposes one small, fixed API to the page as window.sareea.
- * No generic "invoke any channel" function is exposed: each method maps to one channel, and the main
- * process validates every argument again (src/main/main.ts).
+ * No generic "invoke any channel" function is exposed: each method maps to exactly one channel, and every
+ * channel name is a string literal at its call site (so the pairing with the handlers in src/main/main.ts can
+ * be read, and checked by test/ipc-channels.test.ts). The main process validates every argument again.
  */
 import { contextBridge, ipcRenderer } from 'electron';
 import type { IpcRendererEvent } from 'electron';
-import { CH } from '../app/api.ts';
-import type { SareeaApi } from '../app/api.ts';
+import type { AddPrefill, DetailView, ItemsBatch, SareeaApi, ToastMessage } from '../app/api.ts';
+import type { Settings } from '../app/settings.ts';
 
-function subscribe<T>(channel: string, cb: (v: T) => void): () => void {
-  if (typeof cb !== 'function') return () => undefined;
-  const listener = (_e: IpcRendererEvent, v: T) => cb(v);
-  ipcRenderer.on(channel, listener);
-  return () => {
-    ipcRenderer.removeListener(channel, listener);
-  };
-}
+const nothing = (): void => undefined;
 
 const api: SareeaApi = {
-  getState: () => ipcRenderer.invoke(CH.getState),
-  ready: () => ipcRenderer.invoke(CH.ready),
-  probe: (req) => ipcRenderer.invoke(CH.probe, req),
-  add: (req) => ipcRenderer.invoke(CH.add, req),
-  pause: (ids) => ipcRenderer.invoke(CH.pause, ids),
-  resume: (ids) => ipcRenderer.invoke(CH.resume, ids),
-  remove: (req) => ipcRenderer.invoke(CH.remove, req),
-  redownload: (ids) => ipcRenderer.invoke(CH.redownload, ids),
-  openFile: (id) => ipcRenderer.invoke(CH.openFile, id),
-  openFolder: (id) => ipcRenderer.invoke(CH.openFolder, id),
-  copyLink: (id) => ipcRenderer.invoke(CH.copyLink, id),
-  startQueue: () => ipcRenderer.invoke(CH.startQueue),
-  stopQueue: () => ipcRenderer.invoke(CH.stopQueue),
-  setSettings: (patch) => ipcRenderer.invoke(CH.setSettings, patch),
-  pickFolder: () => ipcRenderer.invoke(CH.pickFolder),
-  readClipboardUrl: () => ipcRenderer.invoke(CH.readClipboardUrl),
-  watch: (id) => ipcRenderer.invoke(CH.watch, id),
-  getIntegration: () => ipcRenderer.invoke(CH.getIntegration),
-  installIntegration: () => ipcRenderer.invoke(CH.installIntegration),
-  removeIntegration: () => ipcRenderer.invoke(CH.removeIntegration),
-  openExtensionFolder: () => ipcRenderer.invoke(CH.openExtensionFolder),
-  onItems: (cb) => subscribe(CH.evItems, cb),
-  onSettings: (cb) => subscribe(CH.evSettings, cb),
-  onDetail: (cb) => subscribe(CH.evDetail, cb),
-  onShowAdd: (cb) => subscribe(CH.evShowAdd, cb),
-  onToast: (cb) => subscribe(CH.evToast, cb),
+  getState: () => ipcRenderer.invoke('sareea:getState'),
+  ready: () => ipcRenderer.invoke('sareea:ready'),
+  probe: (req) => ipcRenderer.invoke('sareea:probe', req),
+  add: (req) => ipcRenderer.invoke('sareea:add', req),
+  pause: (ids) => ipcRenderer.invoke('sareea:pause', ids),
+  resume: (ids) => ipcRenderer.invoke('sareea:resume', ids),
+  remove: (req) => ipcRenderer.invoke('sareea:remove', req),
+  redownload: (ids) => ipcRenderer.invoke('sareea:redownload', ids),
+  openFile: (id) => ipcRenderer.invoke('sareea:openFile', id),
+  openFolder: (id) => ipcRenderer.invoke('sareea:openFolder', id),
+  copyLink: (id) => ipcRenderer.invoke('sareea:copyLink', id),
+  startQueue: () => ipcRenderer.invoke('sareea:startQueue'),
+  stopQueue: () => ipcRenderer.invoke('sareea:stopQueue'),
+  setSettings: (patch) => ipcRenderer.invoke('sareea:setSettings', patch),
+  pickFolder: () => ipcRenderer.invoke('sareea:pickFolder'),
+  readClipboardUrl: () => ipcRenderer.invoke('sareea:readClipboardUrl'),
+  watch: (id) => ipcRenderer.invoke('sareea:watch', id),
+  getIntegration: () => ipcRenderer.invoke('sareea:getIntegration'),
+  installIntegration: () => ipcRenderer.invoke('sareea:installIntegration'),
+  removeIntegration: () => ipcRenderer.invoke('sareea:removeIntegration'),
+  openExtensionFolder: () => ipcRenderer.invoke('sareea:openExtensionFolder'),
+  onItems: (cb) => {
+    if (typeof cb !== 'function') return nothing;
+    const listener = (_e: IpcRendererEvent, v: ItemsBatch) => cb(v);
+    ipcRenderer.on('sareea:ev:items', listener);
+    return () => {
+      ipcRenderer.removeListener('sareea:ev:items', listener);
+    };
+  },
+  onSettings: (cb) => {
+    if (typeof cb !== 'function') return nothing;
+    const listener = (_e: IpcRendererEvent, v: Settings) => cb(v);
+    ipcRenderer.on('sareea:ev:settings', listener);
+    return () => {
+      ipcRenderer.removeListener('sareea:ev:settings', listener);
+    };
+  },
+  onDetail: (cb) => {
+    if (typeof cb !== 'function') return nothing;
+    const listener = (_e: IpcRendererEvent, v: DetailView) => cb(v);
+    ipcRenderer.on('sareea:ev:detail', listener);
+    return () => {
+      ipcRenderer.removeListener('sareea:ev:detail', listener);
+    };
+  },
+  onShowAdd: (cb) => {
+    if (typeof cb !== 'function') return nothing;
+    const listener = (_e: IpcRendererEvent, v: AddPrefill) => cb(v);
+    ipcRenderer.on('sareea:ev:showAdd', listener);
+    return () => {
+      ipcRenderer.removeListener('sareea:ev:showAdd', listener);
+    };
+  },
+  onToast: (cb) => {
+    if (typeof cb !== 'function') return nothing;
+    const listener = (_e: IpcRendererEvent, v: ToastMessage) => cb(v);
+    ipcRenderer.on('sareea:ev:toast', listener);
+    return () => {
+      ipcRenderer.removeListener('sareea:ev:toast', listener);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('sareea', Object.freeze(api));

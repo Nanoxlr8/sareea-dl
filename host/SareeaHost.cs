@@ -22,7 +22,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+#if TEST_HOOKS
 using System.Security.Cryptography;
+#endif
 using System.Security.Principal;
 using System.Text;
 using System.Threading;
@@ -35,7 +37,8 @@ static class Program
     const int PollMs = 120;
     const int HardLimitMs = 45000;
 
-    // Test hooks: SAREEA_DL_HOST_READ_MS, _STARTUP_MS and _REPLY_MS shorten the waits in automated tests.
+    // Wait limits. In the TEST flavour (csc /define:TEST_HOOKS, used by the automated tests only) environment
+    // variables can shorten them. The release host has no such code: it reads no environment variable at all.
     static int ReadTimeoutMs = 10000;
     static int StartupWaitMs = 5000;
     static int ReplyTimeoutMs = 20000;
@@ -59,9 +62,11 @@ static class Program
 
     static int Run(string[] args)
     {
+#if TEST_HOOKS
         ReadIntEnv("SAREEA_DL_HOST_READ_MS", ref ReadTimeoutMs);
         ReadIntEnv("SAREEA_DL_HOST_STARTUP_MS", ref StartupWaitMs);
         ReadIntEnv("SAREEA_DL_HOST_REPLY_MS", ref ReplyTimeoutMs);
+#endif
 
         // Who is calling? The browser passes the extension's origin as the first argument.
         string origin = null;
@@ -131,12 +136,14 @@ static class Program
 
     // ------------------------------------------------------------------ framing
 
+#if TEST_HOOKS
     static void ReadIntEnv(string name, ref int target)
     {
         string v = Environment.GetEnvironmentVariable(name);
         int n;
         if (!string.IsNullOrEmpty(v) && int.TryParse(v, out n) && n >= 50 && n <= 60000) target = n;
     }
+#endif
 
     static bool ReadExactly(Stream s, byte[] buf, int count)
     {
@@ -295,7 +302,7 @@ static class Program
 
     // -------------------------------------------------------------------- pipe
 
-    /// <summary>Same name rule as the app: user name with unsafe characters replaced, at most 64, plus the test suffix.</summary>
+    /// <summary>Same name rule as the app: user name with unsafe characters replaced, at most 64 (plus the test suffix in the test flavour).</summary>
     static string PipeName()
     {
         string user = Environment.UserName ?? "user";
@@ -308,9 +315,15 @@ static class Program
         string safeUser = sb.ToString();
         if (safeUser.Length > 64) safeUser = safeUser.Substring(0, 64);
         if (safeUser.Length == 0) safeUser = "user";
+#if TEST_HOOKS
         return "sareea-dl-" + safeUser + TestSuffix();
+#else
+        return "sareea-dl-" + safeUser;
+#endif
     }
 
+#if TEST_HOOKS
+    // Test flavour only: SAREEA_DL_TEST_DIR points the host at a test copy of the app (its own pipe name).
     static string TestSuffix()
     {
         string dir = Environment.GetEnvironmentVariable("SAREEA_DL_TEST_DIR");
@@ -323,6 +336,7 @@ static class Program
             return "-test-" + hex.ToString().Substring(0, 10);
         }
     }
+#endif
 
     enum AttemptKind { Unreachable, Reply, Fail }
 

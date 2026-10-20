@@ -14,9 +14,9 @@ export const FUSES = {
   4: ['EnableEmbeddedAsarIntegrityValidation', true], // app.asar must match the hash embedded in the exe
   5: ['OnlyLoadAppFromAsar', true], // never run an app folder placed next to the exe
   6: ['LoadBrowserProcessSpecificV8Snapshot', false],
-  // Must stay on: with it off, Electron cannot load our page from inside app.asar (ERR_FILE_NOT_FOUND). Safe here because
-  // the page is our own file, has a strict CSP, cannot navigate, and every IPC call checks the sending frame's URL.
-  7: ['GrantFileProtocolExtraPrivileges', true],
+  // Off: the page is served from the app:// scheme (src/app/app-scheme.ts, handler in src/main/main.ts), so nothing
+  // needs file:// privileges any more. (With it off a file:// page cannot be loaded from inside app.asar.)
+  7: ['GrantFileProtocolExtraPrivileges', false],
   8: ['WasmTrapHandlers', true],
 };
 

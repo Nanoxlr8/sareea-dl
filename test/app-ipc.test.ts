@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { APP_INDEX_URL } from '../src/app/app-scheme.ts';
 import {
   isDirAllowed, isInsideDir, isTrustedSender, validateAddRequest, validateHttpUrl, validateIds, validateProbeRequest, validateRemoveRequest,
   validateWatchId, MAX_IDS,
@@ -111,15 +112,24 @@ describe('validateProbeRequest / validateRemoveRequest', () => {
 });
 
 describe('isTrustedSender', () => {
-  const expected = 'file:///C:/Program%20Files/Sareea/resources/app.asar/dist/renderer/index.html';
+  const expected = APP_INDEX_URL;
   it('accepts our own page, ignoring hash and query', () => {
+    assert.equal(expected, 'app://sareea/index.html');
     assert.ok(isTrustedSender(expected, expected));
     assert.ok(isTrustedSender(expected + '#x', expected));
     assert.ok(isTrustedSender(expected + '?a=1', expected));
+    assert.ok(isTrustedSender('APP://SAREEA/index.html', expected), 'scheme and host are case-insensitive');
   });
-  it('refuses other files, other schemes and missing frames', () => {
+  it('refuses other pages, other hosts, other schemes (file: included) and missing frames', () => {
+    assert.ok(!isTrustedSender('app://sareea/other.html', expected));
+    assert.ok(!isTrustedSender('app://sareea/index.html/x', expected));
+    assert.ok(!isTrustedSender('app://sareea/INDEX.HTML', expected), 'the path is exact');
+    assert.ok(!isTrustedSender('app://evil/index.html', expected));
+    assert.ok(!isTrustedSender('app://sareea:8080/index.html', expected));
+    assert.ok(!isTrustedSender('app://user:pw@sareea/index.html', expected));
+    assert.ok(!isTrustedSender('file:///C:/Program%20Files/Sareea/resources/app.asar/dist/renderer/index.html', expected));
     assert.ok(!isTrustedSender('file:///C:/evil/index.html', expected));
-    assert.ok(!isTrustedSender('file:///C:/Program%20Files/Sareea/resources/app.asar/dist/renderer/other.html', expected));
+    assert.ok(!isTrustedSender('https://sareea/index.html', expected));
     assert.ok(!isTrustedSender('https://example.com/dist/renderer/index.html', expected));
     assert.ok(!isTrustedSender('about:blank', expected));
     assert.ok(!isTrustedSender('devtools://devtools/bundled/inspector.html', expected));

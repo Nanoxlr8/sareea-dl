@@ -9,3 +9,5 @@ out/
 secrets/
 *.pem
 *.crx
+dist-test/
+out-test/
