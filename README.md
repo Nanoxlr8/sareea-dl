@@ -141,7 +141,9 @@ runs, step by step (probe, resume check, segments, validation, retry, finish) ar
 
 ## Install and build from source
 
-There is no installer and no signed release yet, so you build it yourself. You need Windows 10 or 11 (x64),
+**Easiest:** download the installer or the portable zip from [Releases](https://github.com/Nanoxlr8/sareea-dl/releases/latest). The build is not code-signed yet, so Windows SmartScreen may warn on first run (More info → Run anyway).
+
+To build it yourself instead: You need Windows 10 or 11 (x64),
 Node 24 or newer with npm, and Git. The native host is compiled with `csc.exe`, which ships with the .NET Framework 4 on every
 Windows 10 and 11 PC.
 
@@ -207,7 +209,8 @@ Everything about building, running and testing: [docs/development.md](docs/devel
 
 ## Roadmap
 
-- [ ] Code signing and an installer
+- [x] Installer and portable build
+- [ ] Code signing
 - [ ] Firefox support (different manifest and host registration)
 - [ ] Proxy settings
 - [ ] Scheduler
