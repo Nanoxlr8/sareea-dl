@@ -36,6 +36,11 @@ npm run dl -- <url> [options]  # the phase-1 command line tool
 npm run icon                   # redraw assets/icon.png and icon.ico (already committed)
 ```
 
+Note: npm 11 may skip Electron's download script during `npm install` (it warns about install scripts).
+If `node_modules/electron/dist` is missing, run `node node_modules/electron/install.js` once. Run the npm
+scripts from a normal path: they call `node scripts/*.mjs` directly because a `&` in the folder name
+breaks `.bin` shims under cmd.exe.
+
 Packaged app: `out/Sareea DL-win32-x64/Sareea DL.exe` (asar on, app icon, hardened fuses, see Security).
 `out/` and `dist/` are not committed.
 
