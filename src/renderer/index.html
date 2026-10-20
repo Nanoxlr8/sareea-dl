@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sareea DL</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <header id="toolbar" role="toolbar">
+      <button id="btnAdd" class="tb primary" data-icon="add" data-i18n="toolbar.add"></button>
+      <span class="sep"></span>
+      <button id="btnResume" class="tb" data-icon="play" data-i18n="toolbar.resume"></button>
+      <button id="btnPause" class="tb" data-icon="pause" data-i18n="toolbar.pause"></button>
+      <button id="btnDelete" class="tb" data-icon="trash" data-i18n="toolbar.delete"></button>
+      <button id="btnDeleteFile" class="tb danger" data-icon="trashx" data-i18n="toolbar.deleteFile"></button>
+      <span class="sep"></span>
+      <button id="btnStartQueue" class="tb" data-icon="queueStart" data-i18n="toolbar.startQueue"></button>
+      <button id="btnStopQueue" class="tb" data-icon="queueStop" data-i18n="toolbar.stopQueue"></button>
+      <span class="grow"></span>
+      <button id="btnDetails" class="tb" data-icon="panel" data-i18n="toolbar.details"></button>
+      <button id="btnSettings" class="tb" data-icon="sliders" data-i18n="toolbar.settings"></button>
+    </header>
+
+    <div id="main">
+      <nav id="sidebar" aria-label="Categories"><ul id="categories"></ul></nav>
+      <section id="content">
+        <div id="tableWrap">
+          <table id="list">
+            <colgroup>
+              <col class="c-name"><col class="c-size"><col class="c-progress"><col class="c-pct"><col class="c-speed"><col class="c-eta"><col class="c-status"><col class="c-added">
+            </colgroup>
+            <thead>
+              <tr>
+                <th data-col="name" data-i18n="col.name"></th>
+                <th data-col="size" data-i18n="col.size"></th>
+                <th data-col="progress" data-i18n="col.progress"></th>
+                <th data-col="pct" data-i18n="col.percent"></th>
+                <th data-col="speed" data-i18n="col.speed"></th>
+                <th data-col="eta" data-i18n="col.eta"></th>
+                <th data-col="status" data-i18n="col.status"></th>
+                <th data-col="added" data-i18n="col.added"></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+          <div id="empty" hidden>
+            <div class="empty-icon" id="emptyIcon"></div>
+            <p id="emptyText" data-i18n="empty.text"></p>
+          </div>
+        </div>
+
+        <section id="detail" hidden>
+          <div class="detail-head">
+            <span id="detailName" class="detail-name"></span>
+            <span id="detailStatus" class="badge"></span>
+            <span class="grow"></span>
+            <button id="btnDetailClose" class="icon-btn" data-icon="close" data-i18n-title="detail.close"></button>
+          </div>
+          <div class="detail-body">
+            <div class="detail-left">
+              <h4 data-i18n="detail.segments"></h4>
+              <canvas id="segCanvas" height="40"></canvas>
+              <div id="segList" class="seg-list"></div>
+            </div>
+            <div class="detail-right">
+              <h4 data-i18n="detail.speed"></h4>
+              <canvas id="speedCanvas" height="64"></canvas>
+              <dl id="detailInfo" class="info"></dl>
+            </div>
+          </div>
+        </section>
+      </section>
+    </div>
+
+    <footer id="statusbar">
+      <span id="statusLeft"></span>
+      <span class="grow"></span>
+      <span id="statusRight"></span>
+    </footer>
+  </div>
+
+  <div id="menu" class="menu" role="menu" hidden></div>
+  <div id="toasts" aria-live="polite"></div>
+
+  <dialog id="addDialog">
+    <form method="dialog" id="addForm" novalidate>
+      <h2 data-i18n="add.title"></h2>
+      <p id="addSource" class="note" hidden></p>
+      <label class="field">
+        <span data-i18n="add.url"></span>
+        <input id="addUrl" type="text" autocomplete="off" spellcheck="false" dir="ltr" data-i18n-placeholder="add.urlPlaceholder">
+      </label>
+      <div id="addInfo" class="probe" hidden>
+        <div class="probe-line"><span id="probeIcon" class="probe-icon"></span><span id="probeText"></span></div>
+      </div>
+      <label class="field">
+        <span data-i18n="add.name"></span>
+        <input id="addName" type="text" autocomplete="off" spellcheck="false" maxlength="255">
+      </label>
+      <div class="field">
+        <span data-i18n="add.folder"></span>
+        <div class="row">
+          <input id="addFolder" type="text" readonly dir="ltr">
+          <button type="button" id="addBrowse" class="btn" data-i18n="add.browse"></button>
+          <button type="button" id="addFolderReset" class="icon-btn" data-icon="close" data-i18n-title="add.folderReset" hidden></button>
+        </div>
+      </div>
+      <div class="field">
+        <span data-i18n="add.connections"></span>
+        <div class="row">
+          <input id="addConn" type="range" min="1" max="16" step="1">
+          <output id="addConnOut" class="conn-out"></output>
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" id="addCancel" class="btn" data-i18n="add.cancel"></button>
+        <span class="grow"></span>
+        <button type="button" id="addQueue" class="btn" data-i18n="add.queue"></button>
+        <button type="button" id="addStart" class="btn primary" data-i18n="add.start"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" id="settingsForm" novalidate>
+      <h2 data-i18n="settings.title"></h2>
+      <div class="settings-grid">
+        <div class="field wide">
+          <span data-i18n="settings.folder"></span>
+          <div class="row">
+            <input id="setFolder" type="text" readonly dir="ltr">
+            <button type="button" id="setBrowse" class="btn" data-i18n="add.browse"></button>
+          </div>
+        </div>
+        <label class="check wide"><input id="setSubfolders" type="checkbox"><span data-i18n="settings.subfolders"></span></label>
+        <label class="field">
+          <span data-i18n="settings.maxConcurrent"></span>
+          <input id="setMax" type="number" min="1" max="10" step="1">
+        </label>
+        <label class="field">
+          <span data-i18n="settings.connections"></span>
+          <input id="setConn" type="number" min="1" max="16" step="1">
+        </label>
+        <label class="field">
+          <span data-i18n="settings.speedLimit"></span>
+          <input id="setLimit" type="number" min="0" max="10000000" step="64">
+        </label>
+        <label class="field">
+          <span data-i18n="settings.theme"></span>
+          <select id="setTheme">
+            <option value="system" data-i18n="settings.themeSystem"></option>
+            <option value="light" data-i18n="settings.themeLight"></option>
+            <option value="dark" data-i18n="settings.themeDark"></option>
+          </select>
+        </label>
+        <label class="field">
+          <span data-i18n="settings.language"></span>
+          <select id="setLang">
+            <option value="en">English</option>
+            <option value="ar">العربية</option>
+          </select>
+        </label>
+        <span></span>
+        <label class="check wide"><input id="setTray" type="checkbox"><span data-i18n="settings.closeToTray"></span></label>
+        <label class="check wide"><input id="setNotify" type="checkbox"><span data-i18n="settings.notify"></span></label>
+        <label class="check wide"><input id="setStartup" type="checkbox"><span data-i18n="settings.startup"></span></label>
+        <label class="check wide"><input id="setClip" type="checkbox"><span data-i18n="settings.clipboard"></span></label>
+        <label class="check wide"><input id="setAuto" type="checkbox"><span data-i18n="settings.browserAuto"></span></label>
+      </div>
+      <p id="aboutLine" class="note"></p>
+      <div class="actions">
+        <span class="grow"></span>
+        <button type="button" id="settingsClose" class="btn primary" data-i18n="settings.done"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="confirmDialog">
+    <form method="dialog" id="confirmForm">
+      <h2 id="confirmTitle"></h2>
+      <p id="confirmText"></p>
+      <div class="actions">
+        <span class="grow"></span>
+        <button type="button" id="confirmNo" class="btn" data-i18n="confirm.cancel"></button>
+        <button type="button" id="confirmYes" class="btn danger-solid"></button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,25 +1,157 @@
 # Sareea DL
 
 A fast, resumable, multi-connection download manager for Windows, written from scratch in TypeScript.
-Phase 1 is the engine, a command line tool and the test suite. Later phases add an Electron UI and a
-Chrome/Edge extension that hands downloads to the engine.
+It has a download engine, a command line tool, and (phase 2) an Electron desktop app in the style of
+IDM: download list, categories, per-connection progress blocks, tray, queue, English and Arabic UI.
+A Chrome/Edge extension is phase 3; the app already listens for it on a local named pipe.
 
-* Zero runtime dependencies, zero dev dependencies. Only Node built-ins.
-* TypeScript runs directly on Node 24 (type stripping): no build step.
+* The engine has zero runtime dependencies (Node built-ins only). The desktop app adds Electron, and
+  its dev tools are `electron`, `esbuild` and `@electron/packager`, nothing else.
 * Original code. Nothing here is copied from IDM or any other download manager.
+
+## Phase status
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Engine, CLI, tests | Done |
+| 2 | Electron desktop app: list, categories, add dialog, detail panel, settings, tray, notifications, queue, English/Arabic (RTL), clipboard watch, local bridge, packaging | Done (this version) |
+| 3 | Chrome/Edge MV3 extension and the native-messaging host that talks to the bridge ([docs/protocol.md](docs/protocol.md)) | Not started |
 
 ## Requirements
 
-Node 24 or newer (developed on v24.14.1). On this version type stripping is on by default and prints no
-warning, so no flag is needed. The code uses only erasable TypeScript syntax (no enums, namespaces or
-parameter properties), so it should also run on other Node versions with type stripping (not tested).
+Windows 10/11 x64, Node 24 or newer and npm (developed on Node v24.14.1, npm 11). The engine, CLI and
+tests run straight from the TypeScript sources with Node's type stripping. The app is bundled with
+esbuild, so Electron does not need to strip types.
 
 ## Run
 
 ```
-npm test                       # 57 tests, about 7 seconds
-npm run dl -- <url> [options]  # same as: node src/cli.ts <url> [options]
+npm install                    # once: electron, esbuild, @electron/packager
+npm test                       # 163 tests (engine + app logic + bridge), about 8 seconds
+npm start                      # build, then open the desktop app
+npm start -- --self-test       # build, then prove an end-to-end download through the app and quit
+npm run build                  # esbuild -> dist/ (main.cjs, preload.cjs, renderer/)
+npm run package                # build + package -> out/Sareea DL-win32-x64/Sareea DL.exe
+npm run dl -- <url> [options]  # the phase-1 command line tool
+npm run icon                   # redraw assets/icon.png and icon.ico (already committed)
 ```
+
+Packaged app: `out/Sareea DL-win32-x64/Sareea DL.exe` (asar on, app icon, hardened fuses, see Security).
+`out/` and `dist/` are not committed.
+
+### `--self-test`
+
+`Sareea DL.exe --self-test` (or `npm start -- --self-test`) runs in a throw-away profile in the temp
+folder and uses the real window. It checks that the page has no Node access and no CSP errors, that
+hostile IPC calls are refused, that the bridge pipe answers and rejects bad input, then a bridge
+"add" opens the prefilled Add dialog, "Start now" downloads
+`https://proof.ovh.net/files/10Mb.dat` (10 485 760 bytes), the list shows it as completed, and the UI
+flips to Arabic RTL. It prints `SELF-TEST PASS` or `FAIL` plus a JSON report and exits 0 or 1.
+Options: `--self-test-out=<file>` (also write the JSON there), `--screenshot-dir=<dir>` (save PNGs and show the window).
+It needs internet access.
+
+## The desktop app
+
+* **Main window.** Toolbar (Add URL, Resume, Pause, Delete, Delete with file, Start queue, Stop queue,
+  Details, Settings), category sidebar (All, Compressed, Documents, Music, Programs, Video, Unfinished,
+  Finished; by file extension), sortable table (name, size, progress bar, %, speed, time left, status,
+  added), multi-select (click, Ctrl, Shift, Ctrl+A), right-click menu (Open, Open folder, Copy link,
+  Pause, Resume, Redownload, Details, Delete, Delete with file), drag a link onto the window to add it.
+  Keys: `Ctrl+V` add from clipboard, `Del` delete (`Shift+Del` with file), `Enter` open or details.
+* **Add dialog.** Reads an http(s) link from the clipboard if there is one, probes it (name, size,
+  resume support), folder (default or Browse), connections 1 to 16, Start now or Add to queue.
+  "Add to queue" keeps the item paused (status Queued) until Start queue.
+* **Detail panel.** One coloured block per slice of the file, filled as bytes arrive, with the current
+  connections visible as the engine splits work (IDM style), a bar per connection, a speed graph, and
+  transfer details (size, done, speed, time left, save path, link, notes from the engine).
+* **Settings.** Default folder (default `%USERPROFILE%\Downloads\Sareea`), per-category subfolders,
+  simultaneous downloads (1 to 10), default connections (1 to 16), global speed limit (KB/s),
+  start with Windows (off), theme (system, light, dark), language (English, Arabic with RTL layout),
+  close to tray, completion notifications, clipboard watch (off), start browser downloads without asking
+  (off). Changes apply at once.
+* **Tray.** Menu: Show, Pause all, Resume all, Quit. Closing the window hides it to the tray (setting).
+  Quit pauses everything cleanly and saves first. A second launch just shows the running window.
+* **Notifications.** A Windows notification when a download completes (click: open its folder), and,
+  with clipboard watch on, when a link to a downloadable file type is copied (click: open the Add dialog).
+* **Persistence.** `%APPDATA%\Sareea DL\` holds `queue.json` (the phase-1 Queue file: the list and
+  history), `settings.json`, `meta.json` (which items are "Queued"), and `logs\`. Downloads that were
+  running when the app stopped come back **paused**; Resume continues from the saved segments.
+* **Mark of the Web.** Finished files get a `Zone.Identifier` stream (zone 3, link origin and path),
+  so SmartScreen and Office treat them as downloaded from the internet.
+
+## Local bridge for the browser extension
+
+The app listens on `\\.\pipe\sareea-dl-<username>`: newline-delimited JSON, request
+`{v:1, id, type:"add"|"ping", url, fileName?, referrer?, headers?{cookie?, userAgent?}, pageUrl?}`,
+reply `{v:1, id, ok, error?}`. An "add" opens the Add dialog prefilled for the user to confirm, unless
+"Start browser downloads without asking" is on. Cookies stay in memory for that one download.
+Full description, limits and examples: [docs/protocol.md](docs/protocol.md).
+
+## Security model
+
+The goal: a page that is only ever our own local file, no network from the UI, a very small and
+validated surface between the page and the system, and no secrets on disk.
+
+**Window and renderer**
+
+* `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, `webSecurity: true`, no webviews,
+  no remote module, DevTools disabled in the packaged app, no application menu, spellcheck off.
+* The only page is `dist/renderer/index.html` (inside `app.asar` when packaged), loaded with `loadFile`.
+  Strict CSP in the page: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;
+  connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`. No inline script or style
+  attributes; text from the engine or network is only ever set with `textContent`.
+* `will-navigate`, `will-redirect` and `will-attach-webview` are blocked; `setWindowOpenHandler` denies
+  every window and opens only validated `http(s)` links through `shell.openExternal`.
+* Permission requests are denied. Any request from the UI to `http(s)`, `ws(s)` or `ftp` is cancelled
+  and logged: the engine downloads from the Node side, the UI never touches the network.
+* The preload script exposes one frozen object, `window.sareea`, with one method per action
+  (`src/app/api.ts`). No generic IPC access.
+
+**IPC**
+
+* Every `ipcMain.handle` checks the sender: it must be the main window's top frame and its URL must be
+  our own `index.html` (`isTrustedSender`). Anything else is refused and logged.
+* Every argument is validated for type, exact shape and range before it is used (`src/app/ipc.ts`,
+  `src/app/settings.ts`): only `http(s)` links, connections 1 to 16, ids must be UUIDs, unknown fields
+  are rejected.
+* Open file and Open folder take only a download id and look the path up in the app's own list, for
+  finished files the app downloaded itself. The renderer can never name a path to open.
+* A download folder from the renderer is accepted only inside the default folder or one the user chose
+  in the native folder dialog in this session. The default folder can only be changed to such a folder.
+* The app never runs a download by itself. Opening a program or script (exe, msi, bat, ps1, js, lnk, jar,
+  iso, macro documents and so on) first asks for confirmation in a native dialog.
+
+**Data and privacy**
+
+* No telemetry, no update checks, no crash reporting, no network except the downloads you start (and
+  the link probe the Add dialog does for a link you typed).
+* Cookie, Authorization and other header values are never written to disk and never logged. The queue
+  file records only that headers existed and their names. Logs (`%APPDATA%\Sareea DL\logs`, 14 days) pass
+  through a redactor that drops query strings, credentials in URLs, cookie and authorization values.
+* Browser cookies from the bridge live in memory under a single-use random token for 10 minutes. The
+  window never sees the value.
+* Single-instance lock. Start with Windows is off by default and is applied only by the packaged app.
+
+**Bridge pipe**
+
+* Name includes the user name. Node creates the pipe with the default Windows ACL, which also lets
+  Everyone and Anonymous read; right after listening the app removes those two entries (a short fixed
+  PowerShell script run from `%SystemRoot%\System32`), leaving the user, Administrators and SYSTEM.
+  Even before that, nobody else could write to it.
+* Strict validation, size limits on every field, 64 KiB per line, 8 connections, 50 requests per
+  connection, 15 s idle timeout. With "start without asking" off (the default) a request can only open a
+  prefilled dialog; the user decides.
+
+**Packaged executable (fuses)**
+
+`npm run package` flips Electron fuses in the exe: `RunAsNode` off, `NODE_OPTIONS` ignored, Node CLI
+inspect arguments off, cookie encryption on, embedded ASAR integrity validation on, only load the app
+from `app.asar`, WebAssembly trap handlers on. `GrantFileProtocolExtraPrivileges` has to stay on,
+because with it off Electron cannot load a page from inside `app.asar` (tested: `ERR_FILE_NOT_FOUND`);
+the CSP, the navigation block and the sender check above are what contain a `file://` page. A packaged
+app also refuses `--inspect`, `--debug` and `--remote-debugging-*` switches. The app is not code-signed.
+
+## Using the engine (phase 1)
 
 ```
 node src/cli.ts <url> [-o dir] [-c 8] [--limit 2M] [-n name] [-H "Name: value"] [--sha256 hex]
@@ -37,8 +169,6 @@ node src/cli.ts <url> [-o dir] [-c 8] [--limit 2M] [-n name] [-H "Name: value"] 
 The CLI shows one live line: percent, MB/s, ETA, bytes. **Ctrl+C pauses cleanly** (the progress file is
 saved); run the same command again and it resumes. Press Ctrl+C twice to quit immediately.
 Exit codes: 0 done, 130 paused, 1 failed, 2 bad arguments.
-
-## Using the engine
 
 ```ts
 import { Download, Limiter, Queue } from './src/index.ts';
@@ -61,18 +191,21 @@ Warning codes: `single-connection`, `ranges-ignored`, `remote-changed`, `not-res
 
 ```ts
 const q = new Queue({ persistPath: 'queue.json', maxConcurrent: 3, limitBytesPerSec: 0 });
-const id = q.add({ url, dir });       // starts when a slot is free
+const id = q.add({ url, dir });                       // starts when a slot is free
+const held = q.add({ url, dir }, { paused: true });   // added but not started (phase 2)
 q.on('progress', ({ id, downloaded, size, speed }) => {});
 await q.pause(id); q.resume(id); await q.cancel(id, true); q.setLimit(1_000_000); q.list();
 ```
 
 Queue events carry the id: `added`, `removed`, `state`, `settled`, `progress`, `done`, `warning`, `error`.
+Phase 2 added to the engine: `Download.fileName` (name once probed), `QueueItem.name`, and the
+`{ paused: true }` flag on `Queue.add`. Nothing else in the engine changed.
 
 ## Architecture
 
 ```
 src/
-  index.ts      public API
+  index.ts      engine public API
   download.ts   Download class: the engine (probe, segments, workers, retry, sidecar, verify, rename)
   probe.ts      HEAD, falls back to GET "Range: bytes=0-0"; size, ranges, ETag, Last-Modified, name, MIME
   segments.ts   pure logic: initial split, work stealing (split the largest remainder in half), validation
@@ -82,6 +215,26 @@ src/
   http.ts       thin node:http(s) client: redirects, no auto-decompression, error classes
   format.ts     size parsing and formatting for the CLI
   cli.ts        command line front end
+  app/          pure app logic shared by main, preload and renderer (no Electron), all unit tested
+    api.ts        view types, the window.sareea API type, IPC channel names
+    ipc.ts        validators for every renderer request, sender check, folder rules
+    settings.ts   settings model, defaults, strict patch and lenient load validation
+    categories.ts extension -> category, sidebar filters, risky file types, link detection
+    protocol.ts   bridge protocol parsing, limits, reply format, line splitter
+    strings.ts    every UI string in English and Arabic
+    fmt.ts        size, speed, time and date formatting (Arabic units, Western digits)
+    redact.ts     secret stripping for logs
+  main/         Electron main process
+    main.ts       window, tray, IPC wiring, session hardening, notifications, clipboard watch
+    controller.ts the app's brain: queue, settings, bridge tokens, actions (no Electron imports, tested)
+    bridge.ts     named-pipe server and pipe ACL clean-up
+    preload.ts    contextBridge API
+    logger.ts     redacting daily log files
+    selftest.ts   the --self-test run
+  renderer/     the sandboxed page: index.html, styles.css, main.ts (UI), detail.ts (panel), icons.ts
+scripts/        build.mjs (esbuild), start.mjs, package.mjs (packager + fuses), fuses.mjs, make-icon.mjs
+assets/         icon.png, icon.ico (drawn by scripts/make-icon.mjs)
+docs/           protocol.md
 test/           node:test suites + a local range-capable test server (helpers.ts)
 ```
 
@@ -107,30 +260,25 @@ How a download runs:
 If the server has no byte ranges or does not report a size, the download uses one connection, cannot be
 resumed, and says so with a `single-connection` warning.
 
-Files next to the download: `<name>.part` (data) and `<name>.sareea.json` (URL, size, ETag, segment
-progress; flushed about once a second and on pause). Both are gitignored.
+Files next to a download: `<name>.part` (data) and `<name>.sareea.json` (URL, size, ETag, segment
+progress; flushed about once a second and on pause).
 
-## Security notes
+Engine security notes: only `http:` and `https:` (also for every redirect); Cookie, Authorization and
+Proxy-Authorization are dropped when a redirect leaves the original origin; error messages show origin and
+path only; the sidecar and queue file do contain the URL itself (needed to resume), so treat links with
+tokens in the query string as sensitive; server-supplied file names are sanitised (path parts, `..`,
+control and bidi characters, `<>:"/\|?*`, trailing dots, reserved device names, over-long names).
 
-* Only `http:` and `https:` URLs are accepted (also for every redirect).
-* Header values (Cookie, Authorization, ...) are never logged, never put in error messages and never
-  written to the sidecar or the queue file. The queue file records only that headers existed and
-  their names. After a restart, `queue.resume(id, headers)` needs the headers again.
-* Cookie, Authorization and Proxy-Authorization are dropped when a redirect leaves the original origin.
-* Error messages show origin + path only, never the query string.
-* The sidecar and queue file do contain the URL itself, which is needed to resume. Treat URLs with tokens
-  in the query string as sensitive.
-* File names from the server are sanitised: path parts, `..`, control and bidi characters,
-  `<>:"/\|?*`, trailing dots and spaces, reserved device names (CON, NUL, COM1...) and over-long names.
+## Design decisions and limits
 
-## Phase status
-
-| Phase | Scope | Status |
-|---|---|---|
-| 1 | Engine, CLI, tests | Done |
-| 2 | Electron UI (queue list, progress, speed limit, tray) | Not started |
-| 3 | Chrome/Edge MV3 extension (capture downloads, cookies and referrer) and a local bridge to the engine | Not started |
-
-Not in phase 1: proxy settings, authentication prompts, FTP, HTTP/2 or HTTP/3 specifics, scheduling,
-site grabber, video capture, bandwidth schedules, auto-extraction, a signed installer.
-Electron's bundled Node must support type stripping (or add a build step) when phase 2 imports `src/index.ts`.
+* **Queued vs paused.** "Add to queue" stores the item paused plus a flag in `meta.json`; the list shows it
+  as Queued. Start queue resumes every paused item, Stop queue pauses everything running or waiting.
+* **Delete** removes the entry. For an unfinished download its partial data is deleted too; a finished file
+  stays on disk. **Delete with file** also deletes the finished file. **Redownload** removes the entry and
+  adds the same link again; an existing finished file is kept, so the new one is saved as `name (1).ext`.
+* **Folders.** With category subfolders on, the default folder gets `Compressed`, `Documents`, `Music`,
+  `Programs`, `Video` or `General` (unknown types). A folder chosen with Browse is used as it is.
+* **Cookies after a restart.** Headers are not stored, so a bridge download that was paused and survives an
+  app restart resumes without its cookie (the server may refuse; send the link again from the browser).
+* **Not done:** code signing and an installer, proxy settings, scheduling, site grabber, video capture,
+  auto-extraction, FTP, HTTP/2 specifics, and a UI for changing the detail panel size.

@@ -15,6 +15,8 @@ export interface QueueItem {
   url: string;
   dir: string;
   fileName: string | null;
+  /** Real file name once known (from the probe, or the final path), else null. */
+  name: string | null;
   connections: number;
   expectedSha256: string | null;
   /** True if the caller supplied request headers (cookies, auth...). The values are never stored. */
@@ -89,8 +91,8 @@ export class Queue extends EventEmitter {
     this.limiter.setLimit(bytesPerSec);
   }
 
-  /** Queue a download; it starts as soon as a slot is free. Returns its id. */
-  add(options: DownloadOptions): string {
+  /** Queue a download; it starts as soon as a slot is free (or stays paused with flags.paused). Returns its id. */
+  add(options: DownloadOptions, flags: { paused?: boolean } = {}): string {
     parseHttpUrl(options.url);
     if (!options.dir) throw new Error('dir is required');
     const id = randomUUID();
@@ -100,11 +102,12 @@ export class Queue extends EventEmitter {
       url: options.url,
       dir: path.resolve(options.dir),
       fileName: options.fileName ?? null,
+      name: options.fileName ?? null,
       connections: options.connections ?? 8,
       expectedSha256: options.expectedSha256 ?? null,
       hadHeaders: headerNames.length > 0,
       headerNames,
-      status: 'queued',
+      status: flags.paused ? 'paused' : 'queued',
       createdAt: new Date().toISOString(),
       downloaded: 0,
       size: null,
@@ -231,6 +234,7 @@ export class Queue extends EventEmitter {
     const id = e.item.id;
     const d = new Download({ ...e.options, limiter: e.options.limiter ?? this.limiter });
     d.on('state', (s: DownloadState) => {
+      if (d.fileName) e.item.name = d.fileName;
       this._setStatus(e, s);
     });
     d.on('progress', (p) => {
@@ -243,6 +247,7 @@ export class Queue extends EventEmitter {
     d.on('warning', (w) => this.emit('warning', { id, ...w }));
     d.on('done', (info) => {
       e.item.path = info.path;
+      e.item.name = path.basename(info.path);
       e.item.downloaded = info.size;
       e.item.size = info.size;
       e.item.speed = 0;
@@ -314,6 +319,7 @@ export class Queue extends EventEmitter {
         url: raw.url,
         dir: raw.dir,
         fileName: raw.fileName ?? null,
+        name: typeof raw.name === 'string' ? raw.name : raw.fileName ?? null,
         connections: raw.connections ?? 8,
         expectedSha256: raw.expectedSha256 ?? null,
         hadHeaders: !!raw.hadHeaders,

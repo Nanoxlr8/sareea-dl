@@ -242,6 +242,11 @@ export class Download extends EventEmitter {
     return Object.keys(this.headers).length > 0;
   }
 
+  /** Sanitised target file name once the probe has run (before any "(1)" numbering), else null. */
+  get fileName(): string | null {
+    return this._baseName || null;
+  }
+
   /** Path of the .part file once known. */
   get partPath(): string | null {
     return this._partPath;

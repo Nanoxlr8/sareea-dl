@@ -1,10 +1,11 @@
 {
   "name": "sareea-dl",
+  "productName": "Sareea DL",
   "version": "0.1.0",
-  "description": "Sareea DL - a fast, segmented, resumable download manager engine (phase 1: engine + CLI).",
+  "description": "Sareea DL - a fast, segmented, resumable download manager (engine, CLI and Electron desktop app).",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "dist/main.cjs",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -13,7 +14,16 @@
   },
   "scripts": {
     "test": "node --test --test-timeout=120000 \"test/*.test.ts\"",
-    "dl": "node src/cli.ts"
+    "dl": "node src/cli.ts",
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/start.mjs",
+    "package": "node scripts/package.mjs",
+    "icon": "node scripts/make-icon.mjs"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^44.9.1",
+    "esbuild": "^0.28.2"
+  }
 }
