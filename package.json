@@ -1,0 +1,19 @@
+{
+  "name": "sareea-dl",
+  "version": "0.1.0",
+  "description": "Sareea DL - a fast, segmented, resumable download manager engine (phase 1: engine + CLI).",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test --test-timeout=120000 \"test/*.test.ts\"",
+    "dl": "node src/cli.ts"
+  },
+  "license": "UNLICENSED"
+}
