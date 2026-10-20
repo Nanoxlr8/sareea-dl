@@ -1,0 +1,21 @@
+{
+  "appId": "com.sareea.dl",
+  "productName": "Sareea DL",
+  "copyright": "Sareea DL",
+  "directories": { "output": "release/installer-tmp", "buildResources": "build" },
+  "artifactName": "SareeaDL-${version}-win-x64-setup.${ext}",
+  "win": { "target": [{ "target": "nsis", "arch": ["x64"] }], "icon": "assets/icon.ico", "signAndEditExecutable": false },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowElevation": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": false,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Sareea DL",
+    "deleteAppDataOnUninstall": false,
+    "include": "build/installer.nsh",
+    "installerIcon": "assets/icon.ico",
+    "uninstallerIcon": "assets/icon.ico"
+  }
+}

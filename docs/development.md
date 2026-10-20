@@ -74,3 +74,16 @@ set SAREEA_DL_TEST_DIR=C:\Users\Public\Sareea-demo
 
 The extension popup picture comes from the end-to-end run: set `E2E_SHOTS=<folder>` before `npm run e2e:extension` and it
 writes `popup.png` (temporary browser profile, nothing of the real browser is touched). Delete the demo folder afterwards.
+
+## Release artifacts (portable zip and installer)
+
+```
+node scripts/package.mjs --out=release/build          # release flavour into release/build (leaves out/ alone), gate included
+node node_modules/electron-builder/cli.js --win nsis --x64 --prepackaged "release/build/Sareea DL-win32-x64" --config electron-builder.json
+node scripts/release-artifacts.mjs                    # portable zip + copy of the setup exe + SHA256SUMS.txt in release/
+```
+
+The installer is a per-user NSIS setup (`build/installer.nsh`) built from the already fused app folder; electron-builder does not
+touch the exe or the asar. The uninstaller removes the HKCU `NativeMessagingHosts\com.sareea.dl` keys for Chrome and Edge, and never
+deletes downloads. Portable mode: a `portable.txt` next to the exe keeps userData in a `data` folder beside it (`src/app/portable.ts`).
+`release/` is not committed.

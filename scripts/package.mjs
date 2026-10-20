@@ -40,7 +40,9 @@ fs.writeFileSync(
 );
 
 const electronVersion = require('electron/package.json').version;
-const out = at(flavour === 'release' ? 'out' : 'out-test');
+// --out=<dir> packages somewhere else (the release artifacts use release/build) so a running copy in out/ is never overwritten
+const outArg = process.argv.slice(2).find((a) => a.startsWith('--out='));
+const out = outArg ? path.resolve(outArg.slice(6)) : at(flavour === 'release' ? 'out' : 'out-test');
 const [appDir] = await packager({
   dir: stage,
   out,

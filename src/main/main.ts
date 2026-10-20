@@ -36,6 +36,7 @@ import { validateSettingsPatch } from '../app/settings.ts';
 import type { Settings } from '../app/settings.ts';
 import { translate } from '../app/strings.ts';
 import type { StringKey } from '../app/strings.ts';
+import { resolveUserDataDir } from '../app/portable.ts';
 import { readTestMode } from '../app/test-hooks.ts';
 import type { TestMode } from '../app/test-hooks.ts';
 
@@ -66,7 +67,10 @@ app.setName('Sareea DL');
 app.setAppUserModelId('com.sareea.dl');
 // The userData folder: the real one, or (test flavour only) a test folder / the self-test's throw-away profile, so a
 // test never touches the real settings, queue or downloads.
-app.setPath('userData', TEST_MODE?.userData ?? path.join(app.getPath('appData'), 'Sareea DL'));
+app.setPath(
+  'userData',
+  TEST_MODE?.userData ?? resolveUserDataDir({ exeDir: path.dirname(process.execPath), appDataDir: app.getPath('appData'), fileExists: (p) => fs.existsSync(p) }),
+);
 if (!SELF_TEST && !SHOWCASE && !app.requestSingleInstanceLock()) {
   app.quit();
   process.exit(0);

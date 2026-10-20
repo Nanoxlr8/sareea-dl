@@ -11,3 +11,4 @@ secrets/
 *.crx
 dist-test/
 out-test/
+release/
